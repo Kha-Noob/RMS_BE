@@ -3,6 +3,7 @@ package web.restaurant.swp.config;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import web.restaurant.swp.modules.auth.repository.RoleRepository;
@@ -18,11 +19,17 @@ import java.util.List;
 @Slf4j
 public class DataSeeder implements CommandLineRunner {
 
+    private final ConfigurableEnvironment environment;
+
     private final RoleRepository roleRepository;
     private final JdbcTemplate jdbcTemplate;
 
     @Override
     public void run(String... args) {
+        if (environment.getActiveProfiles().length > 0 && Arrays.asList(environment.getActiveProfiles()).contains("test")) {
+            log.info("Test profile active - skipping database seeding.");
+            return;
+        }
         if (roleRepository.count() > 0) {
             log.info("Database is already seeded.");
             return;
