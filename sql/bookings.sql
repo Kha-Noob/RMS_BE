@@ -1,0 +1,28 @@
+-- Bookings SQL data
+INSERT INTO bookings (id, customer_name, customer_phone, customer_email, booking_time, guests, status, source, deposit_paid, branch_id, notes, created_at, updated_at) VALUES
+(1, 'Nguyễn Văn Hùng', '0912345601', 'hung@gmail.com', '2026-06-24 18:00:00', 4, 'CHECKED_IN', 'ONLINE', true, '01-2thang9', 'Ghế-window', '2026-06-24 10:00:00', '2026-06-24 18:00:00'),
+(2, 'Trần Thị Lan', '0912345602', 'lan@gmail.com', '2026-06-24 18:30:00', 2, 'CHECKED_IN', 'ONLINE', true, '01-2thang9', NULL, '2026-06-24 11:00:00', '2026-06-24 18:30:00'),
+(3, 'Lê Hoàng Nam', '0912345603', NULL, '2026-06-24 19:00:00', 6, 'CHECKED_IN', 'OFFLINE', false, '01-2thang9', NULL, '2026-06-24 12:00:00', '2026-06-24 19:00:00'),
+(4, 'Phạm Minh Tuấn', '0912345604', 'tuan@gmail.com', '2026-06-24 12:00:00', 3, 'CANCELLED', 'ONLINE', false, '01-2thang9', 'Hủy do bận', '2026-06-24 08:00:00', '2026-06-24 11:30:00'),
+(5, 'Hoàng Thu Thảo', '0912345605', NULL, '2026-06-24 19:30:00', 2, 'CONFIRMED', 'OFFLINE', false, '01-2thang9', NULL, '2026-06-24 14:00:00', '2026-06-24 14:00:00'),
+(6, 'Vũ Quốc Anh', '0912345606', 'anh@gmail.com', '2026-06-24 18:00:00', 8, 'CHECKED_IN', 'ONLINE', true, '11-NguyenHuuTho', 'Tiệc sinh nhật', '2026-06-24 09:00:00', '2026-06-24 18:00:00'),
+(7, 'Đặng Thùy Chi', '0912345607', NULL, '2026-06-24 18:30:00', 4, 'CHECKED_IN', 'OFFLINE', false, '11-NguyenHuuTho', NULL, '2026-06-24 10:00:00', '2026-06-24 18:30:00'),
+(8, 'Bùi Tiến Dũng', '0912345608', 'dung@gmail.com', '2026-06-24 19:00:00', 2, 'CHECKED_IN', 'ONLINE', true, '11-NguyenHuuTho', NULL, '2026-06-24 11:00:00', '2026-06-24 19:00:00'),
+(9, 'Ngô Thanh Hằng', '0912345609', NULL, '2026-06-24 12:30:00', 5, 'NO_SHOW', 'ONLINE', true, '11-NguyenHuuTho', 'Không đến', '2026-06-24 08:30:00', '2026-06-24 13:00:00'),
+(10, 'Đỗ Minh Đức', '0912345610', 'duc@gmail.com', '2026-06-24 19:30:00', 3, 'CONFIRMED', 'OFFLINE', false, '11-NguyenHuuTho', NULL, '2026-06-24 13:00:00', '2026-06-24 13:00:00'),
+(11, 'Hồ Bảo Trâm', '0912345611', NULL, '2026-06-24 18:00:00', 2, 'CHECKED_IN', 'OFFLINE', false, '21-HaiPhong', NULL, '2026-06-24 10:00:00', '2026-06-24 18:00:00'),
+(12, 'Dương Chí Kiên', '0912345612', 'kien@gmail.com', '2026-06-24 18:30:00', 4, 'CHECKED_IN', 'ONLINE', true, '21-HaiPhong', NULL, '2026-06-24 11:00:00', '2026-06-24 18:30:00'),
+(13, 'Lý Kim Ngọc', '0912345613', NULL, '2026-06-24 19:00:00', 6, 'CHECKED_IN', 'OFFLINE', false, '21-HaiPhong', 'Party lớn', '2026-06-24 12:00:00', '2026-06-24 19:00:00'),
+(14, 'Phan Thanh Sơn', '0912345614', 'son@gmail.com', '2026-06-24 11:00:00', 2, 'CANCELLED', 'ONLINE', false, '21-HaiPhong', 'Thay đổi lịch', '2026-06-24 07:00:00', '2026-06-24 10:00:00'),
+(15, 'Võ Hồng Nhung', '0912345615', NULL, '2026-06-24 19:30:00', 3, 'CONFIRMED', 'ONLINE', true, '21-HaiPhong', NULL, '2026-06-24 13:00:00', '2026-06-24 13:00:00'),
+(16, 'Trịnh Gia Huy', '0912345616', 'huy@gmail.com', '2026-06-23 18:00:00', 4, 'CHECKED_IN', 'ONLINE', true, '01-2thang9', NULL, '2026-06-23 09:00:00', '2026-06-23 18:00:00'),
+(17, 'Đinh Ngọc Diệp', '0912345617', NULL, '2026-06-23 19:00:00', 2, 'CHECKED_IN', 'OFFLINE', false, '01-2thang9', NULL, '2026-06-23 11:00:00', '2026-06-23 19:00:00'),
+(18, 'Lâm Quốc Khánh', '0912345618', 'khanh@gmail.com', '2026-06-23 18:00:00', 6, 'CHECKED_IN', 'ONLINE', true, '11-NguyenHuuTho', NULL, '2026-06-23 10:00:00', '2026-06-23 18:00:00'),
+(19, 'Cao Mỹ Linh', '0912345619', NULL, '2026-06-23 19:00:00', 3, 'CHECKED_IN', 'OFFLINE', false, '11-NguyenHuuTho', NULL, '2026-06-23 12:00:00', '2026-06-23 19:00:00'),
+(20, 'Mai Hữu Phước', '0912345620', 'phuoc@gmail.com', '2026-06-23 18:00:00', 4, 'CHECKED_IN', 'ONLINE', true, '21-HaiPhong', NULL, '2026-06-23 09:00:00', '2026-06-23 18:00:00'),
+(21, 'Nguyễn Văn Hùng', '0912345601', 'hung@gmail.com', '2026-06-24 20:00:00', 4, 'CONFIRMED', 'ONLINE', true, '01-2thang9', NULL, '2026-06-24 15:00:00', '2026-06-24 15:00:00'),
+(22, 'Trần Thị Lan', '0912345602', 'lan@gmail.com', '2026-06-24 20:30:00', 2, 'PENDING', 'ONLINE', false, '01-2thang9', NULL, '2026-06-24 16:00:00', '2026-06-24 16:00:00'),
+(23, 'Vũ Quốc Anh', '0912345606', 'anh@gmail.com', '2026-06-24 20:00:00', 8, 'PENDING', 'ONLINE', true, '11-NguyenHuuTho', NULL, '2026-06-24 15:30:00', '2026-06-24 15:30:00'),
+(24, 'Hồ Bảo Trâm', '0912345611', NULL, '2026-06-24 20:30:00', 2, 'CONFIRMED', 'OFFLINE', false, '21-HaiPhong', NULL, '2026-06-24 16:00:00', '2026-06-24 16:00:00'),
+(25, 'Lý Kim Ngọc', '0912345613', NULL, '2026-06-24 21:00:00', 6, 'PENDING', 'OFFLINE', false, '21-HaiPhong', NULL, '2026-06-24 17:00:00', '2026-06-24 17:00:00')
+ON CONFLICT (id) DO NOTHING;
