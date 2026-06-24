@@ -36,6 +36,7 @@ import web.restaurant.swp.modules.promotion.service.*;
 import web.restaurant.swp.modules.analytics.service.*;
 import web.restaurant.swp.modules.branch.model.*;
 import web.restaurant.swp.modules.branch.repository.*;
+import web.restaurant.swp.modules.branch.service.BranchAccessService;
 
 import org.springframework.web.bind.annotation.RequestBody;
 import java.time.LocalDate;
@@ -57,6 +58,7 @@ public class HRController {
     private final org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
     private final RoleRepository roleRepository;
     private final BranchRepository branchRepository;
+    private final BranchAccessService branchAccessService;
 
     private User getLoggedInUser() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -99,9 +101,12 @@ public class HRController {
     @GetMapping("/api/hr/schedule/range")
     public ResponseEntity<?> getScheduleRange(@RequestParam String start, @RequestParam String end) {
         try {
+            BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+            String branchId = branchAccessService.validateAndGetBranchId(null, error);
+            if (error.hasError()) return error.toResponse();
+
             LocalDate startDate = LocalDate.parse(start);
             LocalDate endDate = LocalDate.parse(end);
-            String branchId = getActiveBranchId();
             List<EmployeeShiftAssignment> assignments = employeeShiftAssignmentRepository
                     .findByEmployeeBranchBranchIdAndDateBetween(branchId, startDate, endDate);
             
@@ -374,6 +379,11 @@ public class HRController {
             Branch branch = null;
             if (web.restaurant.swp.config.BranchContext.canSwitchBranch(loggedIn)) {
                 String targetBranchId = (branchId != null && !branchId.trim().isEmpty()) ? branchId : getActiveBranchId();
+                if (targetBranchId != null) {
+                    BranchAccessService.ErrorHolder branchError = new BranchAccessService.ErrorHolder();
+                    branchAccessService.validateEntityBranch(targetBranchId, branchError);
+                    if (branchError.hasError()) return branchError.toResponse();
+                }
                 branch = branchRepository.findById(targetBranchId).orElse(null);
             } else if (loggedIn.getBranch() != null) {
                 branch = loggedIn.getBranch();
@@ -442,6 +452,11 @@ public class HRController {
             Branch branch = null;
             if (web.restaurant.swp.config.BranchContext.canSwitchBranch(loggedIn)) {
                 String targetBranchId = (branchId != null && !branchId.trim().isEmpty()) ? branchId : getActiveBranchId();
+                if (targetBranchId != null) {
+                    BranchAccessService.ErrorHolder branchError = new BranchAccessService.ErrorHolder();
+                    branchAccessService.validateEntityBranch(targetBranchId, branchError);
+                    if (branchError.hasError()) return branchError.toResponse();
+                }
                 branch = branchRepository.findById(targetBranchId).orElse(null);
             } else if (loggedIn.getBranch() != null) {
                 branch = loggedIn.getBranch();

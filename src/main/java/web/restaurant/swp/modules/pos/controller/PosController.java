@@ -34,6 +34,7 @@ import web.restaurant.swp.modules.promotion.service.*;
 import web.restaurant.swp.modules.analytics.service.*;
 import web.restaurant.swp.modules.branch.model.*;
 import web.restaurant.swp.modules.branch.repository.*;
+import web.restaurant.swp.modules.branch.service.BranchAccessService;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -64,6 +65,7 @@ public class PosController {
     private final BankSettingRepository bankSettingRepository;
     private final AuthService authService;
     private final AuditLogRepository auditLogRepository;
+    private final BranchAccessService branchAccessService;
 
     private User getLoggedInUser() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -90,6 +92,12 @@ public class PosController {
             return ResponseEntity.notFound().build();
         }
         TableSession session = sessionOpt.get();
+
+        String entityBranchId = session.getTable().getRoom().getBranch().getBranchId();
+        BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+        branchAccessService.validateEntityBranch(entityBranchId, error);
+        if (error.hasError()) return error.toResponse();
+
         List<Order> orders = orderRepository.findBySessionId(session.getId());
         
         Map<String, Object> response = new HashMap<>();
@@ -126,6 +134,13 @@ public class PosController {
     @PostMapping("/api/pos/session/open")
     public ResponseEntity<?> openSession(@RequestParam Long tableId, @RequestParam(required = false) Long customerId) {
         try {
+            TableEntity table = tableRepository.findById(tableId)
+                    .orElseThrow(() -> new RuntimeException("Table not found"));
+            String entityBranchId = table.getRoom().getBranch().getBranchId();
+            BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+            branchAccessService.validateEntityBranch(entityBranchId, error);
+            if (error.hasError()) return error.toResponse();
+
             TableSession session = orderService.openTableSession(tableId, customerId);
             User user = getLoggedInUser();
             authService.logAudit(user, "OPEN_SESSION", "Order", session.getId().toString(),
@@ -139,6 +154,13 @@ public class PosController {
     @PostMapping("/api/pos/order/add")
     public ResponseEntity<?> addToCart(@RequestParam Long sessionId, @RequestParam Long variantId, @RequestParam int quantity, @RequestParam(required = false, defaultValue = "") String notes) {
         try {
+            TableSession sess = tableSessionRepository.findById(sessionId)
+                    .orElseThrow(() -> new RuntimeException("Session not found"));
+            String entityBranchId = sess.getTable().getRoom().getBranch().getBranchId();
+            BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+            branchAccessService.validateEntityBranch(entityBranchId, error);
+            if (error.hasError()) return error.toResponse();
+
             OrderDetail detail = orderService.addItemToSession(sessionId, variantId, quantity, notes);
             User user = getLoggedInUser();
             authService.logAudit(user, "ORDER_ADD_ITEM", "Order", detail.getOrder().getId().toString(),
@@ -153,9 +175,16 @@ public class PosController {
     @PostMapping("/api/pos/order/send")
     public ResponseEntity<?> sendToKds(@RequestParam Long sessionId) {
         try {
+            TableSession session = tableSessionRepository.findById(sessionId).orElse(null);
+            if (session != null) {
+                String entityBranchId = session.getTable().getRoom().getBranch().getBranchId();
+                BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+                branchAccessService.validateEntityBranch(entityBranchId, error);
+                if (error.hasError()) return error.toResponse();
+            }
+
             orderService.sendToKitchen(sessionId);
             User user = getLoggedInUser();
-            TableSession session = tableSessionRepository.findById(sessionId).orElse(null);
             String branchId = (session != null) ? session.getTable().getRoom().getBranch().getBranchId() : getActiveBranchId();
             authService.logAudit(user, "ORDER_SEND_KITCHEN", "Order", sessionId.toString(),
                 "Gửi yêu cầu chế biến món ăn bàn " + (session != null ? session.getTable().getName() : sessionId) + " xuống bếp",
@@ -172,6 +201,14 @@ public class PosController {
         try {
             TableSession src = tableSessionRepository.findById(sourceSessionId).orElse(null);
             TableSession tgt = tableSessionRepository.findById(targetSessionId).orElse(null);
+
+            if (tgt != null) {
+                String entityBranchId = tgt.getTable().getRoom().getBranch().getBranchId();
+                BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+                branchAccessService.validateEntityBranch(entityBranchId, error);
+                if (error.hasError()) return error.toResponse();
+            }
+
             orderService.mergeBill(sourceSessionId, targetSessionId);
             User user = getLoggedInUser();
             String branchId = (tgt != null) ? tgt.getTable().getRoom().getBranch().getBranchId() : getActiveBranchId();
@@ -188,10 +225,17 @@ public class PosController {
     @PostMapping("/api/pos/bill/split")
     public ResponseEntity<?> splitBill(@RequestParam Long sessionId, @RequestParam String detailIds) {
         try {
+            TableSession original = tableSessionRepository.findById(sessionId).orElse(null);
+            if (original != null) {
+                String entityBranchId = original.getTable().getRoom().getBranch().getBranchId();
+                BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+                branchAccessService.validateEntityBranch(entityBranchId, error);
+                if (error.hasError()) return error.toResponse();
+            }
+
             List<Long> ids = Arrays.stream(detailIds.split(","))
                     .map(Long::parseLong)
                     .collect(Collectors.toList());
-            TableSession original = tableSessionRepository.findById(sessionId).orElse(null);
             List<Long> sessions = orderService.splitBill(sessionId, ids);
             User user = getLoggedInUser();
             String branchId = (original != null) ? original.getTable().getRoom().getBranch().getBranchId() : getActiveBranchId();
@@ -208,6 +252,14 @@ public class PosController {
     @PostMapping("/api/pos/checkout/vnpay")
     public ResponseEntity<?> requestVNPayQR(@RequestParam Long sessionId) {
         try {
+            TableSession sess = tableSessionRepository.findById(sessionId).orElse(null);
+            if (sess != null) {
+                String entityBranchId = sess.getTable().getRoom().getBranch().getBranchId();
+                BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+                branchAccessService.validateEntityBranch(entityBranchId, error);
+                if (error.hasError()) return error.toResponse();
+            }
+
             String payData = orderService.generateVNPayQR(sessionId);
             return ResponseEntity.ok(Map.of("qrData", payData));
         } catch (Exception e) {
@@ -219,6 +271,13 @@ public class PosController {
     public ResponseEntity<?> finalizePayment(@RequestParam Long sessionId, @RequestParam double amount, @RequestParam(required = false, defaultValue = "CASH") String paymentMethod) {
         try {
             TableSession session = tableSessionRepository.findById(sessionId).orElse(null);
+            if (session != null) {
+                String entityBranchId = session.getTable().getRoom().getBranch().getBranchId();
+                BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+                branchAccessService.validateEntityBranch(entityBranchId, error);
+                if (error.hasError()) return error.toResponse();
+            }
+
             orderService.confirmPayment(sessionId, amount, paymentMethod);
             User user = getLoggedInUser();
             String branchId = (session != null) ? session.getTable().getRoom().getBranch().getBranchId() : getActiveBranchId();
@@ -232,42 +291,75 @@ public class PosController {
         }
     }
 
-    @GetMapping("/api/pos/order-logs")
-    public ResponseEntity<?> getOrderLogs(@RequestParam(required = false, defaultValue = "day") String range) {
+    @GetMapping("/api/pos/order-logs/summary")
+    public ResponseEntity<?> getOrderLogsSummary(@RequestParam(required = false, defaultValue = "day") String range) {
         try {
-            String branchId = getActiveBranchId();
-            LocalDateTime start;
-            LocalDateTime end = LocalDateTime.now();
+            BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+            String branchId = branchAccessService.validateAndGetBranchId(null, error);
+            if (error.hasError()) return error.toResponse();
 
+            LocalDateTime start;
             if ("week".equalsIgnoreCase(range)) {
                 start = LocalDate.now().minusDays(7).atStartOfDay();
             } else if ("month".equalsIgnoreCase(range)) {
                 start = LocalDate.now().withDayOfMonth(1).atStartOfDay();
             } else {
-                start = LocalDate.now().atStartOfDay(); // day
+                start = LocalDate.now().atStartOfDay();
             }
 
-            List<String> actions = Arrays.asList("OPEN_SESSION", "ORDER_ADD_ITEM", "ORDER_SEND_KITCHEN", "BILL_MERGE", "BILL_SPLIT", "BILL_PAYMENT");
-            
-            // Check if super admin
-            User loggedInUser = getLoggedInUser();
-            boolean isSuperAdmin = loggedInUser != null && loggedInUser.getBranch() == null && loggedInUser.getRoles().stream().anyMatch(r -> "ADMIN".equalsIgnoreCase(r.getName()));
-            
-            String queryBranchId = isSuperAdmin ? null : branchId;
-            List<AuditLog> logs = auditLogRepository.findLogsForPOS(start, end, actions, queryBranchId);
+            List<Order> orders = orderRepository.findByBranchId(branchId);
+            List<Order> todayOrders = orders.stream()
+                    .filter(o -> o.getOrderDate() != null && o.getOrderDate().isAfter(start))
+                    .filter(o -> "SERVED".equalsIgnoreCase(o.getStatus()))
+                    .collect(Collectors.toList());
 
-            List<Map<String, Object>> result = logs.stream()
-                .map(log -> {
-                    Map<String, Object> map = new HashMap<>();
-                    map.put("id", log.getId());
-                    map.put("userName", log.getUserName());
-                    map.put("action", log.getAction());
-                    map.put("description", log.getDescription());
-                    map.put("createdAt", log.getCreatedAt().toString());
-                    map.put("ipAddress", log.getIpAddress());
-                    return map;
-                })
-                .collect(Collectors.toList());
+            double totalRevenue = todayOrders.stream().mapToDouble(o -> o.getTotalAmount() != null ? o.getTotalAmount() : 0.0).sum();
+            int totalOrders = todayOrders.size();
+            double avgOrder = totalOrders > 0 ? totalRevenue / totalOrders : 0.0;
+
+            Map<String, Object> summary = new HashMap<>();
+            summary.put("totalRevenue", totalRevenue);
+            summary.put("totalOrders", totalOrders);
+            summary.put("averageOrderValue", avgOrder);
+            summary.put("topSellingItem", "N/A");
+            return ResponseEntity.ok(summary);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @GetMapping("/api/pos/order-logs")
+    public ResponseEntity<?> getOrderLogs(@RequestParam(required = false, defaultValue = "day") String range) {
+        try {
+            BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+            String branchId = branchAccessService.validateAndGetBranchId(null, error);
+            if (error.hasError()) return error.toResponse();
+
+            LocalDateTime start;
+            if ("week".equalsIgnoreCase(range)) {
+                start = LocalDate.now().minusDays(7).atStartOfDay();
+            } else if ("month".equalsIgnoreCase(range)) {
+                start = LocalDate.now().withDayOfMonth(1).atStartOfDay();
+            } else {
+                start = LocalDate.now().atStartOfDay();
+            }
+
+            List<Order> orders = orderRepository.findByBranchId(branchId);
+            List<Map<String, Object>> result = orders.stream()
+                    .filter(o -> o.getOrderDate() != null && o.getOrderDate().isAfter(start))
+                    .sorted((a, b) -> b.getOrderDate().compareTo(a.getOrderDate()))
+                    .map(o -> {
+                        Map<String, Object> map = new HashMap<>();
+                        map.put("id", o.getId());
+                        map.put("orderNumber", "#" + o.getId());
+                        map.put("totalAmount", o.getTotalAmount());
+                        map.put("status", o.getStatus());
+                        map.put("paymentMethod", "CASH");
+                        map.put("createdAt", o.getOrderDate() != null ? o.getOrderDate().toString() : "");
+                        map.put("createdBy", o.getSession() != null && o.getSession().getTable() != null ? o.getSession().getTable().getName() : "");
+                        return map;
+                    })
+                    .collect(Collectors.toList());
 
             return ResponseEntity.ok(result);
         } catch (Exception e) {
@@ -278,7 +370,10 @@ public class PosController {
     @GetMapping("/api/pos/bank-setting")
     public ResponseEntity<?> getBankSetting() {
         try {
-            String branchId = getActiveBranchId();
+            BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+            String branchId = branchAccessService.validateAndGetBranchId(null, error);
+            if (error.hasError()) return error.toResponse();
+
             Optional<BankSetting> settingOpt = bankSettingRepository.findByBranchBranchId(branchId);
             if (settingOpt.isEmpty()) {
                 settingOpt = bankSettingRepository.findByBranchBranchId("01-2thang9");
@@ -295,12 +390,15 @@ public class PosController {
     @PostMapping("/api/pos/bank-setting")
     public ResponseEntity<?> saveBankSetting(@RequestParam String bankName, @RequestParam String bankCode, @RequestParam String accountNumber, @RequestParam String accountHolder) {
         try {
-            User loggedInUser = getLoggedInUser();
+            User loggedInUser = branchAccessService.getLoggedInUser();
             if (loggedInUser == null || loggedInUser.getRoles().stream().noneMatch(r -> "ADMIN".equalsIgnoreCase(r.getName()))) {
                 return ResponseEntity.status(403).body("Không có quyền thực hiện thao tác này.");
             }
 
-            String branchId = getActiveBranchId();
+            BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+            String branchId = branchAccessService.validateAndGetBranchId(null, error);
+            if (error.hasError()) return error.toResponse();
+
             Branch branch = branchRepository.findById(branchId)
                     .orElseThrow(() -> new RuntimeException("Không tìm thấy chi nhánh"));
 
@@ -325,10 +423,57 @@ public class PosController {
         }
     }
 
+    @GetMapping("/api/pos/products")
+    public ResponseEntity<?> getProducts() {
+        try {
+            BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+            String branchId = branchAccessService.validateAndGetBranchId(null, error);
+            if (error.hasError()) return error.toResponse();
+
+            String tenantId = getActiveTenantId();
+            List<Product> products = productRepository.findByTenantTenantIdAndIsActiveTrue(tenantId);
+
+            List<Map<String, Object>> result = new ArrayList<>();
+            for (Product product : products) {
+                Map<String, Object> pMap = new HashMap<>();
+                pMap.put("id", product.getId());
+                pMap.put("name", product.getName());
+                pMap.put("description", product.getDescription());
+                pMap.put("isActive", product.isActive());
+
+                if (product.getCategory() != null) {
+                    Map<String, Object> catMap = new HashMap<>();
+                    catMap.put("id", product.getCategory().getId());
+                    catMap.put("name", product.getCategory().getName());
+                    pMap.put("category", catMap);
+                }
+
+                List<ProductVariant> variants = productVariantRepository.findByProductId(product.getId());
+                List<Map<String, Object>> variantList = new ArrayList<>();
+                for (ProductVariant v : variants) {
+                    Map<String, Object> vMap = new HashMap<>();
+                    vMap.put("id", v.getId());
+                    vMap.put("name", v.getName());
+                    vMap.put("price", v.getPrice());
+                    vMap.put("product", pMap);
+                    variantList.add(vMap);
+                }
+                pMap.put("variants", variantList);
+                result.add(pMap);
+            }
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
     @GetMapping("/api/pos/rooms")
     public ResponseEntity<?> getRooms() {
         try {
-            String branchId = getActiveBranchId();
+            BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+            String branchId = branchAccessService.validateAndGetBranchId(null, error);
+            if (error.hasError()) return error.toResponse();
+
             List<Room> rooms = roomRepository.findByBranchBranchId(branchId);
             return ResponseEntity.ok(rooms);
         } catch (Exception e) {
@@ -339,7 +484,10 @@ public class PosController {
     @GetMapping("/api/pos/tables")
     public ResponseEntity<?> getTables() {
         try {
-            String branchId = getActiveBranchId();
+            BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+            String branchId = branchAccessService.validateAndGetBranchId(null, error);
+            if (error.hasError()) return error.toResponse();
+
             List<TableEntity> tables = tableRepository.findByRoomBranchBranchId(branchId);
             return ResponseEntity.ok(tables);
         } catch (Exception e) {
@@ -355,7 +503,10 @@ public class PosController {
                 return ResponseEntity.status(403).body("Không có quyền thực hiện thao tác này.");
             }
             
-            String branchId = getActiveBranchId();
+            BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+            String branchId = branchAccessService.validateAndGetBranchId(null, error);
+            if (error.hasError()) return error.toResponse();
+
             Branch branch = branchRepository.findById(branchId)
                     .orElseThrow(() -> new RuntimeException("Không tìm thấy chi nhánh"));
             Room room = Room.builder()
@@ -379,7 +530,12 @@ public class PosController {
             
             Room room = roomRepository.findById(roomId)
                     .orElseThrow(() -> new RuntimeException("Không tìm thấy phòng/khu vực"));
-            
+
+            String entityBranchId = room.getBranch().getBranchId();
+            BranchAccessService.ErrorHolder branchError = new BranchAccessService.ErrorHolder();
+            branchAccessService.validateEntityBranch(entityBranchId, branchError);
+            if (branchError.hasError()) return branchError.toResponse();
+
             List<TableEntity> tables = tableRepository.findByRoomId(roomId);
             if (!tables.isEmpty()) {
                 return ResponseEntity.badRequest().body("Không thể xóa khu vực này vì vẫn còn bàn thuộc khu vực.");
@@ -402,6 +558,12 @@ public class PosController {
             
             Room room = roomRepository.findById(roomId)
                     .orElseThrow(() -> new RuntimeException("Không tìm thấy phòng/khu vực"));
+
+            String entityBranchId = room.getBranch().getBranchId();
+            BranchAccessService.ErrorHolder branchError = new BranchAccessService.ErrorHolder();
+            branchAccessService.validateEntityBranch(entityBranchId, branchError);
+            if (branchError.hasError()) return branchError.toResponse();
+
             TableEntity table = TableEntity.builder()
                     .name(name)
                     .room(room)
@@ -449,7 +611,12 @@ public class PosController {
             
             TableEntity table = tableRepository.findById(tableId)
                     .orElseThrow(() -> new RuntimeException("Không tìm thấy bàn"));
-            
+
+            String entityBranchId = table.getRoom().getBranch().getBranchId();
+            BranchAccessService.ErrorHolder branchError = new BranchAccessService.ErrorHolder();
+            branchAccessService.validateEntityBranch(entityBranchId, branchError);
+            if (branchError.hasError()) return branchError.toResponse();
+
             if (!"EMPTY".equalsIgnoreCase(table.getStatus())) {
                 return ResponseEntity.badRequest().body("Không thể xóa bàn đang có khách hoặc đã đặt.");
             }

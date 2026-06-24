@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import web.restaurant.swp.modules.auth.model.*;
 import web.restaurant.swp.modules.auth.repository.*;
 import web.restaurant.swp.modules.analytics.service.*;
+import web.restaurant.swp.modules.branch.service.BranchAccessService;
 
 import java.util.*;
 
@@ -20,21 +21,15 @@ public class AnalyticsController {
 
     private final UserRepository userRepository;
     private final AIService aiService;
-
-    private User getLoggedInUser() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated()) return null;
-        return userRepository.findByEmail(auth.getName()).orElse(null);
-    }
-
-    private String getActiveBranchId() {
-        return web.restaurant.swp.config.BranchContext.getActiveBranchId(getLoggedInUser());
-    }
+    private final BranchAccessService branchAccessService;
 
     @PostMapping("/api/analytics/ai-chat")
     public ResponseEntity<?> chatAI(@RequestParam String query) {
         try {
-            String branchId = getActiveBranchId();
+            BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+            String branchId = branchAccessService.validateAndGetBranchId(null, error);
+            if (error.hasError()) return error.toResponse();
+
             String response = aiService.analyzeDailyReport(branchId, query);
             return ResponseEntity.ok(Map.of("reply", response));
         } catch (Exception e) {

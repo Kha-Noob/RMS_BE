@@ -30,15 +30,20 @@ import web.restaurant.swp.modules.promotion.service.*;
 import web.restaurant.swp.modules.analytics.service.*;
 import web.restaurant.swp.modules.branch.model.*;
 import web.restaurant.swp.modules.branch.repository.*;
+import web.restaurant.swp.modules.branch.service.BranchAccessService;
 
 import java.util.Optional;
 
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.http.ResponseEntity;
 import java.util.List;
+import java.util.Map;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Optional;
 
 @RestController
@@ -56,6 +61,7 @@ public class InventoryController {
     private final BranchRepository branchRepository;
     private final BranchTransferRepository branchTransferRepository;
     private final BranchTransferItemRepository branchTransferItemRepository;
+    private final BranchAccessService branchAccessService;
 
     private User getLoggedInUser() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -77,11 +83,41 @@ public class InventoryController {
 
 
 
+    @GetMapping("/api/inventory/stock")
+    public ResponseEntity<?> getStock() {
+        try {
+            BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+            String branchId = branchAccessService.validateAndGetBranchId(null, error);
+            if (error.hasError()) return error.toResponse();
+
+            List<BranchInventory> branchInventories = branchInventoryRepository.findByBranchBranchId(branchId);
+
+            List<Map<String, Object>> result = new ArrayList<>();
+            for (BranchInventory bi : branchInventories) {
+                Map<String, Object> map = new HashMap<>();
+                map.put("id", bi.getItem().getId());
+                map.put("name", bi.getItem().getName());
+                map.put("unit", bi.getItem().getUnit());
+                map.put("currentStock", bi.getQuantity());
+                map.put("minimumStock", bi.getItem().getMinimumThreshold());
+                map.put("branchName", bi.getBranch().getName());
+                result.add(map);
+            }
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
     @PostMapping("/api/inventory/adjust")
     public ResponseEntity<?> adjustStock(@RequestBody AdjustStockRequest request) {
         try {
+            BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+            String branchId = branchAccessService.validateAndGetBranchId(null, error);
+            if (error.hasError()) return error.toResponse();
+
             inventoryService.executeStocktake(
-                getActiveBranchId(),
+                branchId,
                 request.getItemId(),
                 request.getActualQuantity()
             );
@@ -212,7 +248,10 @@ public class InventoryController {
             inventoryItemRepository.save(item);
             
             // Proactively create BranchInventory for the current branch
-            String activeBranchId = getActiveBranchId();
+            BranchAccessService.ErrorHolder branchError = new BranchAccessService.ErrorHolder();
+            String activeBranchId = branchAccessService.validateAndGetBranchId(null, branchError);
+            if (branchError.hasError()) return branchError.toResponse();
+
             if (branchInventoryRepository.findByBranchBranchIdAndItemId(activeBranchId, item.getId()).isEmpty()) {
                 Branch branch = branchRepository.findById(activeBranchId)
                         .orElseThrow(() -> new RuntimeException("Không tìm thấy chi nhánh"));
@@ -421,16 +460,21 @@ public class InventoryController {
     @PostMapping("/api/inventory/transfer/create")
     public ResponseEntity<?> createTransfer(@RequestBody TransferRequest request) {
         try {
-            User loggedInUser = getLoggedInUser();
-            if (loggedInUser == null) {
-                return ResponseEntity.status(401).body("Chưa đăng nhập");
-            }
-            String targetBranchId = getActiveBranchId();
+            BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+            String targetBranchId = branchAccessService.validateAndGetBranchId(null, error);
+            if (error.hasError()) return error.toResponse();
+
             String sourceBranchId = request.getSourceBranchId();
             
             if (sourceBranchId == null || sourceBranchId.trim().isEmpty()) {
                 return ResponseEntity.badRequest().body("Vui lòng chọn chi nhánh gửi");
             }
+
+            // Validate source branch access for non-admin users
+            BranchAccessService.ErrorHolder sourceError = new BranchAccessService.ErrorHolder();
+            branchAccessService.validateEntityBranch(sourceBranchId, sourceError);
+            if (sourceError.hasError()) return sourceError.toResponse();
+
             if (request.getItemIds() == null || request.getItemIds().isEmpty() || request.getQuantities() == null || request.getQuantities().isEmpty()) {
                 return ResponseEntity.badRequest().body("Vui lòng thêm ít nhất một nguyên liệu");
             }
@@ -450,19 +494,19 @@ public class InventoryController {
     @PostMapping("/api/inventory/transfer/approve/{id}")
     public ResponseEntity<?> approveTransfer(@PathVariable Long id) {
         try {
-            User loggedInUser = getLoggedInUser();
-            if (loggedInUser == null) {
-                return ResponseEntity.status(401).body("Chưa đăng nhập");
+            BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+            branchAccessService.getLoggedInUser(); // ensures authenticated
+            if (branchAccessService.getLoggedInUser() == null) {
+                error.set(401, "Not authenticated");
+                return error.toResponse();
             }
             
             BranchTransfer transfer = branchTransferRepository.findById(id)
                     .orElseThrow(() -> new RuntimeException("Không tìm thấy yêu cầu điều chuyển"));
             
-            // Validate that logged-in user belongs to the source branch of the transfer, or has ADMIN role
-            boolean isAdmin = loggedInUser.getRoles().stream().anyMatch(r -> "ADMIN".equalsIgnoreCase(r.getName()));
-            if (!isAdmin && (loggedInUser.getBranch() == null || !loggedInUser.getBranch().getBranchId().equals(transfer.getSourceBranch().getBranchId()))) {
-                return ResponseEntity.status(403).body("Chỉ chi nhánh nguồn (gửi hàng) mới có quyền phê duyệt yêu cầu này.");
-            }
+            String entityBranchId = transfer.getSourceBranch().getBranchId();
+            branchAccessService.validateEntityBranch(entityBranchId, error);
+            if (error.hasError()) return error.toResponse();
             
             inventoryService.approveAndExecuteTransfer(id);
             return ResponseEntity.ok("Đã phê duyệt và điều chuyển kho thành công");
@@ -476,6 +520,11 @@ public class InventoryController {
         try {
             BranchTransfer transfer = branchTransferRepository.findById(id)
                     .orElseThrow(() -> new RuntimeException("Không tìm thấy yêu cầu điều chuyển"));
+
+            BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+            branchAccessService.validateEntityBranch(transfer.getSourceBranch().getBranchId(), error);
+            if (error.hasError()) return error.toResponse();
+
             List<BranchTransferItem> items = branchTransferItemRepository.findByTransferId(id);
             
             java.util.Map<String, Object> response = new java.util.HashMap<>();
