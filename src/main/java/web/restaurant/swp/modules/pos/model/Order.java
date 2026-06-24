@@ -56,4 +56,7 @@ public class Order {
 
     @Column(name = "branch_id", length = 36, nullable = false)
     private String branchId;
+
+    @Column(nullable = false)
+    private String source = "OFFLINE"; // ONLINE, OFFLINE
 }

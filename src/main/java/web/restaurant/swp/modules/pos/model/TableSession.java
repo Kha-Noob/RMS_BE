@@ -63,4 +63,7 @@ public class TableSession {
 
     @Column(name = "payment_method")
     private String paymentMethod; // CASH, BANK_TRANSFER
+
+    @Column(nullable = false)
+    private String source = "WALK_IN"; // WALK_IN, ONLINE, OFFLINE
 }
