@@ -21,19 +21,26 @@ public class BranchContext {
 
     public static boolean canSwitchBranch(User user) {
         if (user == null) return false;
-        // System admin has branch == null, and the specific user '2thang9@liteflow.com' is allowed to switch branches
-        return user.getBranch() == null || "2thang9@liteflow.com".equals(user.getEmail());
+        return user.getRoles().stream().anyMatch(r -> "ADMIN".equals(r.getName()));
     }
 
     public static String getActiveBranchId(User user) {
         if (user == null) {
-            return "01-2thang9";
+            return null;
         }
 
-        if (canSwitchBranch(user)) {
-            try {
-                ServletRequestAttributes attr = (ServletRequestAttributes) RequestContextHolder.currentRequestAttributes();
-                HttpServletRequest request = attr.getRequest();
+        try {
+            ServletRequestAttributes attr = (ServletRequestAttributes) RequestContextHolder.currentRequestAttributes();
+            HttpServletRequest request = attr.getRequest();
+
+            // 1. X-Branch-Id header (highest priority)
+            String headerBranchId = request.getHeader("X-Branch-Id");
+            if (headerBranchId != null && !headerBranchId.trim().isEmpty()) {
+                return headerBranchId;
+            }
+
+            // 2. HTTP session (for admin users who switched via session)
+            if (canSwitchBranch(user)) {
                 HttpSession session = request.getSession(false);
                 if (session != null) {
                     String sessionBranchId = (String) session.getAttribute("activeBranchId");
@@ -41,14 +48,15 @@ public class BranchContext {
                         return sessionBranchId;
                     }
                 }
-            } catch (Exception ignored) {
             }
+        } catch (Exception ignored) {
         }
 
+        // 3. User's assigned branch
         if (user.getBranch() != null) {
             return user.getBranch().getBranchId();
         }
 
-        return "01-2thang9";
+        return null;
     }
 }
