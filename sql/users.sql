@@ -49,5 +49,7 @@ INSERT INTO users (id, email, password, name, is_active, failed_login_attempts, 
 (47, 'Hp-Chef-DuongQuangHam@liteflow.com', '$2a$10$7eq/t4lk9f9gu4CNmWPIZOJ4ktC6wwMeSazvIZsiP8l.ceOVCVe4y', 'Dương Quảng Hàm', true, 0, '21-HaiPhong', false, 'tenant-1'),
 (48, 'Hp-Chef-TrinhCongSon@liteflow.com', '$2a$10$7eq/t4lk9f9gu4CNmWPIZOJ4ktC6wwMeSazvIZsiP8l.ceOVCVe4y', 'Trịnh Công Sơn', true, 0, '21-HaiPhong', false, 'tenant-1'),
 (49, 'Hp-Cashier-MaiHacDe@liteflow.com', '$2a$10$7eq/t4lk9f9gu4CNmWPIZOJ4ktC6wwMeSazvIZsiP8l.ceOVCVe4y', 'Mai Hắc Đế', true, 0, '21-HaiPhong', false, 'tenant-1'),
-(50, 'Hp-Cashier-NguyenDu@liteflow.com', '$2a$10$7eq/t4lk9f9gu4CNmWPIZOJ4ktC6wwMeSazvIZsiP8l.ceOVCVe4y', 'Nguyễn Du', true, 0, '21-HaiPhong', false, 'tenant-1')
+(50, 'Hp-Cashier-NguyenDu@liteflow.com', '$2a$10$7eq/t4lk9f9gu4CNmWPIZOJ4ktC6wwMeSazvIZsiP8l.ceOVCVe4y', 'Nguyễn Du', true, 0, '21-HaiPhong', false, 'tenant-1'),
+(51, 'manager-2thang9@liteflow.com', '$2a$10$7eq/t4lk9f9gu4CNmWPIZOJ4ktC6wwMeSazvIZsiP8l.ceOVCVe4y', 'Nguyễn Quản Lý - Chi nhánh 2 Tháng 9', true, 0, '01-2thang9', false, 'tenant-1'),
+(52, 'manager-nguyenhuutho@liteflow.com', '$2a$10$7eq/t4lk9f9gu4CNmWPIZOJ4ktC6wwMeSazvIZsiP8l.ceOVCVe4y', 'Trần Quản Lý - Chi nhánh Nguyễn Hữu Thọ', true, 0, '11-NguyenHuuTho', false, 'tenant-1')
 ON CONFLICT (id) DO NOTHING;
