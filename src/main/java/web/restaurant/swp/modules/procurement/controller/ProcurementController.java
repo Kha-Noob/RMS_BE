@@ -30,6 +30,7 @@ import web.restaurant.swp.modules.promotion.service.*;
 import web.restaurant.swp.modules.analytics.service.*;
 import web.restaurant.swp.modules.branch.model.*;
 import web.restaurant.swp.modules.branch.repository.*;
+import web.restaurant.swp.modules.branch.service.BranchAccessService;
 
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -52,23 +53,11 @@ public class ProcurementController {
     private final UserRepository userRepository;
     private final ProcurementService procurementService;
     private final InventoryItemRepository inventoryItemRepository;
+    private final BranchAccessService branchAccessService;
 
-    private User getLoggedInUser() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated()) return null;
-        return userRepository.findByEmail(auth.getName()).orElse(null);
-    }
-
-    private String getActiveBranchId() {
-        return web.restaurant.swp.config.BranchContext.getActiveBranchId(getLoggedInUser());
-    }
-
-    private String getActiveTenantId() {
-        User user = getLoggedInUser();
-        if (user != null && user.getTenant() != null) {
-            return user.getTenant().getTenantId();
-        }
-        return "tenant-1";
+    private String validatePoBranch(PurchaseOrder po, BranchAccessService.ErrorHolder error) {
+        String entityBranchId = po.getBranch() != null ? po.getBranch().getBranchId() : null;
+        return branchAccessService.validateEntityBranch(entityBranchId, error);
     }
 
     @GetMapping("/api/procurement/po/details/{poId}")
@@ -76,6 +65,11 @@ public class ProcurementController {
         try {
             PurchaseOrder po = purchaseOrderRepository.findById(poId)
                     .orElseThrow(() -> new RuntimeException("Không tìm thấy đơn hàng"));
+
+            BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+            validatePoBranch(po, error);
+            if (error.hasError()) return error.toResponse();
+
             List<PurchaseOrderItem> items = purchaseOrderItemRepository.findByPurchaseOrderId(poId);
             
             Map<String, Object> response = new HashMap<>();
@@ -109,6 +103,13 @@ public class ProcurementController {
     public ResponseEntity<?> approvePo(@RequestBody Map<String, Long> payload) {
         try {
             Long poId = payload.get("poId");
+            PurchaseOrder po = purchaseOrderRepository.findById(poId)
+                    .orElseThrow(() -> new RuntimeException("Không tìm thấy đơn hàng"));
+
+            BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+            validatePoBranch(po, error);
+            if (error.hasError()) return error.toResponse();
+
             procurementService.approvePurchaseOrder(poId);
             return ResponseEntity.ok("Successfully approved Purchase Order");
         } catch (Exception e) {
@@ -119,6 +120,13 @@ public class ProcurementController {
     @PostMapping("/api/procurement/po/grn")
     public ResponseEntity<?> createGoodsReceipt(@RequestBody GrnRequest request) {
         try {
+            PurchaseOrder po = purchaseOrderRepository.findById(request.getPoId())
+                    .orElseThrow(() -> new RuntimeException("Không tìm thấy đơn hàng"));
+
+            BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+            validatePoBranch(po, error);
+            if (error.hasError()) return error.toResponse();
+
             List<Long> itemIds = request.getItemIds();
             List<Double> acceptedQty = request.getAcceptedQty();
             List<Double> rejectedQty = request.getRejectedQty();
@@ -151,6 +159,13 @@ public class ProcurementController {
     @PostMapping("/api/procurement/po/match")
     public ResponseEntity<?> performThreeWayMatch(@RequestBody MatchRequest request) {
         try {
+            PurchaseOrder po = purchaseOrderRepository.findById(request.getPoId())
+                    .orElseThrow(() -> new RuntimeException("Không tìm thấy đơn hàng"));
+
+            BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+            validatePoBranch(po, error);
+            if (error.hasError()) return error.toResponse();
+
             boolean match = procurementService.performThreeWayMatch(request.getPoId(), request.getActualInvoiceAmount());
             return ResponseEntity.ok(match);
         } catch (Exception e) {
@@ -161,7 +176,10 @@ public class ProcurementController {
     @PostMapping("/api/procurement/po/create")
     public ResponseEntity<?> createPurchaseOrder(@RequestBody PoCreateRequest request) {
         try {
-            String branchId = getActiveBranchId();
+            BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+            String branchId = branchAccessService.validateAndGetBranchId(null, error);
+            if (error.hasError()) return error.toResponse();
+
             PurchaseOrder po = procurementService.createPurchaseOrder(
                 branchId,
                 request.getSupplierId(),

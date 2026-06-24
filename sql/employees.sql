@@ -47,5 +47,7 @@ INSERT INTO employees (id, user_id, branch_id, department, title, base_salary, s
 (45, 47, '21-HaiPhong', 'Bếp', 'Đầu bếp chính', 8000000.0, 'Fixed', '2024-01-15'),
 (46, 48, '21-HaiPhong', 'Bếp', 'Đầu bếp chính', 8000000.0, 'Fixed', '2024-01-15'),
 (47, 49, '21-HaiPhong', 'Thu ngân', 'Thu ngân', 6000000.0, 'Fixed', '2024-01-15'),
-(48, 50, '21-HaiPhong', 'Thu ngân', 'Thu ngân', 6000000.0, 'Fixed', '2024-01-15')
+(48, 50, '21-HaiPhong', 'Thu ngân', 'Thu ngân', 6000000.0, 'Fixed', '2024-01-15'),
+(49, 51, '01-2thang9', 'Quản lý', 'Branch Manager', 15000000.0, 'Fixed', '2024-01-15'),
+(50, 52, '11-NguyenHuuTho', 'Quản lý', 'Branch Manager', 15000000.0, 'Fixed', '2024-01-15')
 ON CONFLICT (id) DO NOTHING;
