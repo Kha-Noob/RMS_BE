@@ -1,16 +1,4 @@
--- Products SQL data (Recreate Table DDL + Inserts)
--- Recreate Table containing category_id column
-DROP TABLE IF EXISTS products CASCADE;
-CREATE TABLE products (
-    id bigserial PRIMARY KEY,
-    name varchar(255) NOT NULL,
-    description text,
-    image_path varchar(255),
-    category_id bigint REFERENCES categories(id),
-    is_active boolean DEFAULT true NOT NULL,
-    tenant_id varchar(36)
-);
-
+-- Products SQL data
 INSERT INTO products (id, name, description, image_path, category_id, is_active, tenant_id) VALUES
 (1, 'Cơm Tấm Sườn Bì Chả', 'Cơm tấm đặc sản miền Nam ăn kèm sườn nướng mật ong ngon tuyệt cú mèo.', 'https://images.unsplash.com/photo-1509722747041-616f39b57569?w=500', 1, true, 'tenant-1'),
 (2, 'Bún Chả Hà Nội', 'Bún chả nướng than hoa thơm nức mũi ăn kèm nước chấm đu đủ xanh chua ngọt.', 'https://images.unsplash.com/photo-1596797038530-2c107229654b?w=500', 1, true, 'tenant-1'),
