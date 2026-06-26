@@ -54,4 +54,25 @@ public class TableEntity {
     
     @Column(name = "guest_count")
     private Integer guestCount = 0;
+
+    @Column(name = "layout_x")
+    private Double layoutX;
+
+    @Column(name = "layout_y")
+    private Double layoutY;
+
+    @Column(name = "layout_width")
+    private Double layoutWidth;
+
+    @Column(name = "layout_height")
+    private Double layoutHeight;
+
+    @Column(name = "layout_rotation")
+    private Double layoutRotation;
+
+    @Column(name = "layout_radius")
+    private Double layoutRadius;
+
+    @Column(name = "display_label")
+    private String displayLabel;
 }

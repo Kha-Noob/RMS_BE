@@ -46,4 +46,22 @@ public class Room {
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "branch_id", nullable = false)
     private Branch branch;
+
+    @Column(name = "floor_plan_image_url")
+    private String floorPlanImageUrl;
+
+    @Column(name = "panorama_url")
+    private String panoramaUrl;
+
+    @Column(name = "panorama_type")
+    private String panoramaType; // IMAGE_360, EXTERNAL_LINK
+
+    @Column(name = "display_order")
+    private Integer displayOrder = 0;
+
+    @Column(name = "floor_plan_width")
+    private Integer floorPlanWidth;
+
+    @Column(name = "floor_plan_height")
+    private Integer floorPlanHeight;
 }

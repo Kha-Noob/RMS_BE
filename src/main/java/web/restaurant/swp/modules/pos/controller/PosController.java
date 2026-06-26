@@ -172,6 +172,74 @@ public class PosController {
         }
     }
 
+    @PutMapping("/api/pos/session/{sessionId}/item/{detailId}")
+    public ResponseEntity<?> updateCartItem(
+            @PathVariable Long sessionId,
+            @PathVariable Long detailId,
+            @RequestParam int quantity) {
+        try {
+            TableSession sess = tableSessionRepository.findById(sessionId)
+                    .orElseThrow(() -> new RuntimeException("Session not found"));
+            String entityBranchId = sess.getTable().getRoom().getBranch().getBranchId();
+            BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+            branchAccessService.validateEntityBranch(entityBranchId, error);
+            if (error.hasError()) return error.toResponse();
+
+            OrderDetail detail = orderDetailRepository.findById(detailId)
+                    .orElseThrow(() -> new RuntimeException("Cart item not found"));
+
+            if (quantity <= 0) {
+                orderDetailRepository.delete(detail);
+            } else {
+                detail.setQuantity(quantity);
+                orderDetailRepository.save(detail);
+            }
+
+            // Update order total
+            Order order = detail.getOrder();
+            double orderTotal = orderDetailRepository.findByOrderId(order.getId()).stream()
+                    .mapToDouble(d -> d.getPrice() * d.getQuantity())
+                    .sum();
+            order.setTotalAmount(orderTotal);
+            orderRepository.save(order);
+
+            return ResponseEntity.ok().build();
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @DeleteMapping("/api/pos/session/{sessionId}/item/{detailId}")
+    public ResponseEntity<?> deleteCartItem(
+            @PathVariable Long sessionId,
+            @PathVariable Long detailId) {
+        try {
+            TableSession sess = tableSessionRepository.findById(sessionId)
+                    .orElseThrow(() -> new RuntimeException("Session not found"));
+            String entityBranchId = sess.getTable().getRoom().getBranch().getBranchId();
+            BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+            branchAccessService.validateEntityBranch(entityBranchId, error);
+            if (error.hasError()) return error.toResponse();
+
+            OrderDetail detail = orderDetailRepository.findById(detailId)
+                    .orElseThrow(() -> new RuntimeException("Cart item not found"));
+
+            Order order = detail.getOrder();
+            orderDetailRepository.delete(detail);
+
+            // Update order total
+            double orderTotal = orderDetailRepository.findByOrderId(order.getId()).stream()
+                    .mapToDouble(d -> d.getPrice() * d.getQuantity())
+                    .sum();
+            order.setTotalAmount(orderTotal);
+            orderRepository.save(order);
+
+            return ResponseEntity.ok().build();
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
     @PostMapping("/api/pos/order/send")
     public ResponseEntity<?> sendToKds(@RequestParam Long sessionId) {
         try {
@@ -496,7 +564,14 @@ public class PosController {
     }
 
     @PostMapping("/api/pos/rooms/add")
-    public ResponseEntity<?> addRoom(@RequestParam String name) {
+    public ResponseEntity<?> addRoom(
+            @RequestParam String name,
+            @RequestParam(required = false) String floorPlanImageUrl,
+            @RequestParam(required = false) String panoramaUrl,
+            @RequestParam(required = false) String panoramaType,
+            @RequestParam(required = false, defaultValue = "0") Integer displayOrder,
+            @RequestParam(required = false) Integer floorPlanWidth,
+            @RequestParam(required = false) Integer floorPlanHeight) {
         try {
             User loggedInUser = getLoggedInUser();
             if (loggedInUser == null || loggedInUser.getRoles().stream().noneMatch(r -> "ADMIN".equalsIgnoreCase(r.getName()) || "MANAGER".equalsIgnoreCase(r.getName()))) {
@@ -512,7 +587,52 @@ public class PosController {
             Room room = Room.builder()
                     .name(name)
                     .branch(branch)
+                    .floorPlanImageUrl(floorPlanImageUrl)
+                    .panoramaUrl(panoramaUrl)
+                    .panoramaType(panoramaType)
+                    .displayOrder(displayOrder)
+                    .floorPlanWidth(floorPlanWidth)
+                    .floorPlanHeight(floorPlanHeight)
                     .build();
+            room = roomRepository.save(room);
+            return ResponseEntity.ok(room);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PostMapping("/api/pos/rooms/update")
+    public ResponseEntity<?> updateRoom(
+            @RequestParam Long roomId,
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) String floorPlanImageUrl,
+            @RequestParam(required = false) String panoramaUrl,
+            @RequestParam(required = false) String panoramaType,
+            @RequestParam(required = false) Integer displayOrder,
+            @RequestParam(required = false) Integer floorPlanWidth,
+            @RequestParam(required = false) Integer floorPlanHeight) {
+        try {
+            User loggedInUser = getLoggedInUser();
+            if (loggedInUser == null || loggedInUser.getRoles().stream().noneMatch(r -> "ADMIN".equalsIgnoreCase(r.getName()) || "MANAGER".equalsIgnoreCase(r.getName()))) {
+                return ResponseEntity.status(403).body("Không có quyền thực hiện thao tác này.");
+            }
+
+            Room room = roomRepository.findById(roomId)
+                    .orElseThrow(() -> new RuntimeException("Không tìm thấy phòng/khu vực"));
+
+            String entityBranchId = room.getBranch().getBranchId();
+            BranchAccessService.ErrorHolder branchError = new BranchAccessService.ErrorHolder();
+            branchAccessService.validateEntityBranch(entityBranchId, branchError);
+            if (branchError.hasError()) return branchError.toResponse();
+
+            if (name != null && !name.trim().isEmpty()) room.setName(name);
+            if (floorPlanImageUrl != null) room.setFloorPlanImageUrl(floorPlanImageUrl);
+            if (panoramaUrl != null) room.setPanoramaUrl(panoramaUrl);
+            if (panoramaType != null) room.setPanoramaType(panoramaType);
+            if (displayOrder != null) room.setDisplayOrder(displayOrder);
+            if (floorPlanWidth != null) room.setFloorPlanWidth(floorPlanWidth);
+            if (floorPlanHeight != null) room.setFloorPlanHeight(floorPlanHeight);
+
             room = roomRepository.save(room);
             return ResponseEntity.ok(room);
         } catch (Exception e) {
@@ -549,7 +669,17 @@ public class PosController {
     }
 
     @PostMapping("/api/pos/tables/add")
-    public ResponseEntity<?> addTable(@RequestParam String name, @RequestParam Long roomId, @RequestParam Integer capacity) {
+    public ResponseEntity<?> addTable(
+            @RequestParam String name,
+            @RequestParam Long roomId,
+            @RequestParam Integer capacity,
+            @RequestParam(required = false) Double layoutX,
+            @RequestParam(required = false) Double layoutY,
+            @RequestParam(required = false) Double layoutWidth,
+            @RequestParam(required = false) Double layoutHeight,
+            @RequestParam(required = false) Double layoutRotation,
+            @RequestParam(required = false) Double layoutRadius,
+            @RequestParam(required = false) String displayLabel) {
         try {
             User loggedInUser = getLoggedInUser();
             if (loggedInUser == null || loggedInUser.getRoles().stream().noneMatch(r -> "ADMIN".equalsIgnoreCase(r.getName()) || "MANAGER".equalsIgnoreCase(r.getName()))) {
@@ -570,6 +700,13 @@ public class PosController {
                     .capacity(capacity)
                     .status("EMPTY")
                     .guestCount(0)
+                    .layoutX(layoutX)
+                    .layoutY(layoutY)
+                    .layoutWidth(layoutWidth)
+                    .layoutHeight(layoutHeight)
+                    .layoutRotation(layoutRotation)
+                    .layoutRadius(layoutRadius)
+                    .displayLabel(displayLabel)
                     .build();
             table = tableRepository.save(table);
             return ResponseEntity.ok(table);
@@ -579,7 +716,18 @@ public class PosController {
     }
 
     @PostMapping("/api/pos/tables/update")
-    public ResponseEntity<?> updateTable(@RequestParam Long tableId, @RequestParam String name, @RequestParam Long roomId, @RequestParam Integer capacity) {
+    public ResponseEntity<?> updateTable(
+            @RequestParam Long tableId,
+            @RequestParam String name,
+            @RequestParam Long roomId,
+            @RequestParam Integer capacity,
+            @RequestParam(required = false) Double layoutX,
+            @RequestParam(required = false) Double layoutY,
+            @RequestParam(required = false) Double layoutWidth,
+            @RequestParam(required = false) Double layoutHeight,
+            @RequestParam(required = false) Double layoutRotation,
+            @RequestParam(required = false) Double layoutRadius,
+            @RequestParam(required = false) String displayLabel) {
         try {
             User loggedInUser = getLoggedInUser();
             if (loggedInUser == null || loggedInUser.getRoles().stream().noneMatch(r -> "ADMIN".equalsIgnoreCase(r.getName()) || "MANAGER".equalsIgnoreCase(r.getName()))) {
@@ -594,6 +742,13 @@ public class PosController {
             table.setName(name);
             table.setRoom(room);
             table.setCapacity(capacity);
+            if (layoutX != null) table.setLayoutX(layoutX);
+            if (layoutY != null) table.setLayoutY(layoutY);
+            if (layoutWidth != null) table.setLayoutWidth(layoutWidth);
+            if (layoutHeight != null) table.setLayoutHeight(layoutHeight);
+            if (layoutRotation != null) table.setLayoutRotation(layoutRotation);
+            if (layoutRadius != null) table.setLayoutRadius(layoutRadius);
+            if (displayLabel != null) table.setDisplayLabel(displayLabel);
             table = tableRepository.save(table);
             return ResponseEntity.ok(table);
         } catch (Exception e) {
