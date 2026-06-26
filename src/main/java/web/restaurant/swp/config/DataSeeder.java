@@ -77,7 +77,9 @@ public class DataSeeder implements CommandLineRunner {
             "payroll_runs.sql",
             "payroll_entries.sql",
             "bookings.sql",
-            "customer_reviews.sql"
+            "customer_reviews.sql",
+            "floor_plans.sql",
+            "floor_plan_objects.sql"
         );
 
         // Try to locate the sql directory.
@@ -129,7 +131,8 @@ public class DataSeeder implements CommandLineRunner {
             "purchase_order_items", "goods_receipts", "goods_receipt_items", "promotions", "promotion_usage", 
             "user_sessions", "audit_logs", "branch_transfers", "branch_transfer_items", "inventory_logs", 
             "loyalty_transactions", "payroll_runs", "payroll_entries",
-            "bookings", "customer_reviews"
+            "bookings", "customer_reviews",
+            "floor_plans", "floor_plan_objects"
         );
 
         for (String tableName : tablesToReset) {
