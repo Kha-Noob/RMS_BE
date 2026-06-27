@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import java.time.LocalDateTime;
 
@@ -20,6 +21,7 @@ public class FloorPlanObject {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "floor_plan_id", nullable = false)
+    @JsonIgnore
     private FloorPlan floorPlan;
 
     @Column(name = "object_type", nullable = false)
