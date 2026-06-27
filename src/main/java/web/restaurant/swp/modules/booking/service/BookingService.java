@@ -50,6 +50,14 @@ public class BookingService {
             booking.setStatus("PENDING");
         }
 
+        if (booking.getDepositPaid() == null) {
+            booking.setDepositPaid(false);
+        }
+
+        if (booking.getSource() == null || booking.getSource().trim().isEmpty()) {
+            booking.setSource("ONLINE");
+        }
+
         // Validate table selection if specified
         if (booking.getTableId() != null) {
             List<Long> bookedIds = getBookedTableIds(booking.getBranchId(), booking.getBookingTime());
