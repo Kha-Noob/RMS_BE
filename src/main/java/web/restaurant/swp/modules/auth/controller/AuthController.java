@@ -37,6 +37,11 @@ public class AuthController {
                     response.put("isActive", user.isActive());
                     response.put("branchId", user.getBranch() != null ? user.getBranch().getBranchId() : null);
                     response.put("tenantId", user.getTenant() != null ? user.getTenant().getTenantId() : null);
+                    response.put("avatarUrl", user.getAvatarUrl());
+                    response.put("phone", user.getPhone());
+                    response.put("birthday", user.getBirthday());
+                    response.put("gender", user.getGender());
+                    response.put("dietaryNotes", user.getDietaryNotes());
                     return ResponseEntity.ok(response);
                 })
                 .orElse(ResponseEntity.status(401).body(Map.of("error", "User not found")));

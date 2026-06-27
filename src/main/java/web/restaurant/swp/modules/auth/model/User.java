@@ -85,4 +85,19 @@ public class User {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "tenant_id")
     private Tenant tenant;
+
+    @Column(name = "avatar_url")
+    private String avatarUrl;
+
+    @Column(name = "phone")
+    private String phone;
+
+    @Column(name = "birthday")
+    private String birthday;
+
+    @Column(name = "gender")
+    private String gender;
+
+    @Column(name = "dietary_notes", length = 1000)
+    private String dietaryNotes;
 }
