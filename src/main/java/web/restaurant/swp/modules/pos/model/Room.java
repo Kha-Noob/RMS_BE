@@ -56,6 +56,7 @@ public class Room {
     @Column(name = "panorama_type")
     private String panoramaType; // IMAGE_360, EXTERNAL_LINK
 
+    @Builder.Default
     @Column(name = "display_order")
     private Integer displayOrder = 0;
 

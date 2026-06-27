@@ -29,23 +29,29 @@ public class FloorPlanObject {
 
     private String label;
 
+    @Builder.Default
     @Column(nullable = false)
     private Double x = 0.0;
 
+    @Builder.Default
     @Column(nullable = false)
     private Double y = 0.0;
 
+    @Builder.Default
     @Column(nullable = false)
     private Double width = 80.0;
 
+    @Builder.Default
     @Column(nullable = false)
     private Double height = 80.0;
 
+    @Builder.Default
     @Column(nullable = false)
     private Double rotation = 0.0;
 
     private String shape; // circle, rectangle, line, arc
 
+    @Builder.Default
     @Column(name = "z_index", nullable = false)
     private Integer zIndex = 0;
 

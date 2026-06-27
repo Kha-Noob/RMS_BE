@@ -151,6 +151,7 @@ class PosControllerIntegrationTest {
                 .build();
 
         when(userRepository.findByEmail("cashier@liteflow.com")).thenReturn(Optional.of(testUser));
+        when(tableRepository.findById(1L)).thenReturn(Optional.of(testTable));
         when(orderService.openTableSession(eq(1L), isNull())).thenReturn(newSession);
 
         mockMvc.perform(post("/api/pos/session/open")
@@ -166,6 +167,7 @@ class PosControllerIntegrationTest {
     @WithMockUser(username = "cashier@liteflow.com", roles = {"CASHIER"})
     void openSession_ShouldReturnBadRequest_WhenTableNotFound() throws Exception {
         when(userRepository.findByEmail("cashier@liteflow.com")).thenReturn(Optional.of(testUser));
+        when(tableRepository.findById(999L)).thenReturn(Optional.empty());
         when(orderService.openTableSession(eq(999L), isNull()))
                 .thenThrow(new RuntimeException("Không tìm thấy bàn."));
 
@@ -186,6 +188,7 @@ class PosControllerIntegrationTest {
                 .id(1L).order(order).variant(variant).quantity(2).price(95000.0).status("PENDING").notes("ít hành").build();
 
         when(userRepository.findByEmail("cashier@liteflow.com")).thenReturn(Optional.of(testUser));
+        when(tableSessionRepository.findById(1L)).thenReturn(Optional.of(testSession));
         when(orderService.addItemToSession(eq(1L), eq(1L), eq(2), eq("ít hành"))).thenReturn(detail);
 
         mockMvc.perform(post("/api/pos/order/add")

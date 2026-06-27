@@ -29,12 +29,15 @@ public class FloorPlan {
     @Column(nullable = false)
     private String name;
 
+    @Builder.Default
     @Column(name = "floor_number", nullable = false)
     private Integer floorNumber = 1;
 
+    @Builder.Default
     @Column(nullable = false)
     private Integer width = 1200;
 
+    @Builder.Default
     @Column(nullable = false)
     private Integer height = 800;
 
@@ -44,9 +47,11 @@ public class FloorPlan {
     @Column(name = "panorama_360_url")
     private String panorama360Url;
 
+    @Builder.Default
     @Column(nullable = false)
     private String status = "draft"; // draft, published
 
+    @Builder.Default
     @Column(name = "is_table_selection_enabled", nullable = false)
     private Boolean isTableSelectionEnabled = false;
 

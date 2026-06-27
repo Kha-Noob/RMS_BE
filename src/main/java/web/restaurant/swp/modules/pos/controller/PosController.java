@@ -135,7 +135,7 @@ public class PosController {
     public ResponseEntity<?> openSession(@RequestParam Long tableId, @RequestParam(required = false) Long customerId) {
         try {
             TableEntity table = tableRepository.findById(tableId)
-                    .orElseThrow(() -> new RuntimeException("Table not found"));
+                    .orElseThrow(() -> new RuntimeException("Không tìm thấy bàn."));
             String entityBranchId = table.getRoom().getBranch().getBranchId();
             BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
             branchAccessService.validateEntityBranch(entityBranchId, error);
@@ -155,7 +155,7 @@ public class PosController {
     public ResponseEntity<?> addToCart(@RequestParam Long sessionId, @RequestParam Long variantId, @RequestParam int quantity, @RequestParam(required = false, defaultValue = "") String notes) {
         try {
             TableSession sess = tableSessionRepository.findById(sessionId)
-                    .orElseThrow(() -> new RuntimeException("Session not found"));
+                    .orElseThrow(() -> new RuntimeException("Không tìm thấy phiên."));
             String entityBranchId = sess.getTable().getRoom().getBranch().getBranchId();
             BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
             branchAccessService.validateEntityBranch(entityBranchId, error);
