@@ -97,7 +97,14 @@ public class SecurityConfig {
                     response.sendRedirect("/api/auth/oauth2/failure?error=" + exception.getMessage());
                 })
             )
-            .httpBasic(httpBasic -> {});
+            .httpBasic(httpBasic -> httpBasic
+                .authenticationEntryPoint((request, response, authException) -> {
+                    response.setStatus(401);
+                    response.setContentType("application/json");
+                    response.setCharacterEncoding("UTF-8");
+                    response.getWriter().write("{\"error\": \"Unauthorized\", \"message\": \"" + authException.getMessage() + "\"}");
+                })
+            );
 
         return http.build();
     }
