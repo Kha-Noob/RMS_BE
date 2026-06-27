@@ -74,10 +74,10 @@ public class S3Service {
 
         if (isMockMode) {
             // Save locally for debug / test simulation
-            Path targetPath = Paths.get(localUploadDir, "avatars", filename);
+            Path targetPath = Paths.get(localUploadDir, "avatars", filename).toAbsolutePath();
             Files.createDirectories(targetPath.getParent());
             file.transferTo(targetPath.toFile());
-            log.info("Mock Mode: Saved file locally to {}", targetPath.toAbsolutePath());
+            log.info("Mock Mode: Saved file locally to {}", targetPath);
             
             // Return S3 URL format as requested by frontend
             return String.format("https://%s.s3.%s.amazonaws.com/%s", bucketName, region, s3Key);
@@ -96,7 +96,7 @@ public class S3Service {
             } catch (Exception e) {
                 log.error("Failed to upload to AWS S3. Falling back to local copy.", e);
                 // Fallback to local copy
-                Path targetPath = Paths.get(localUploadDir, "avatars", filename);
+                Path targetPath = Paths.get(localUploadDir, "avatars", filename).toAbsolutePath();
                 Files.createDirectories(targetPath.getParent());
                 file.transferTo(targetPath.toFile());
                 return String.format("https://%s.s3.%s.amazonaws.com/%s", bucketName, region, s3Key);
