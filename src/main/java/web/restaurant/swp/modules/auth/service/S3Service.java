@@ -79,8 +79,8 @@ public class S3Service {
             file.transferTo(targetPath.toFile());
             log.info("Mock Mode: Saved file locally to {}", targetPath);
             
-            // Return S3 URL format as requested by frontend
-            return String.format("https://%s.s3.%s.amazonaws.com/%s", bucketName, region, s3Key);
+            // Return local server URL so it can be served and displayed immediately
+            return String.format("http://localhost:8080/api/floor-plans/files/avatars/%s", filename);
         } else {
             // Real S3 Upload
             try {
@@ -99,7 +99,7 @@ public class S3Service {
                 Path targetPath = Paths.get(localUploadDir, "avatars", filename).toAbsolutePath();
                 Files.createDirectories(targetPath.getParent());
                 file.transferTo(targetPath.toFile());
-                return String.format("https://%s.s3.%s.amazonaws.com/%s", bucketName, region, s3Key);
+                return String.format("http://localhost:8080/api/floor-plans/files/avatars/%s", filename);
             }
         }
     }
