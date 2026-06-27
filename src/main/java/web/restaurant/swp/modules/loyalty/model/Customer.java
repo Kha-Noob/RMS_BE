@@ -51,12 +51,15 @@ public class Customer {
     @Column(name = "birth_date")
     private LocalDate birthDate;
 
+    @Builder.Default
     @Column(name = "membership_tier", nullable = false)
     private String membershipTier = "Bronze"; // Bronze, Silver, Gold, Platinum
 
+    @Builder.Default
     @Column(name = "loyalty_points", nullable = false)
     private Integer loyaltyPoints = 0;
 
+    @Builder.Default
     @Column(name = "total_spent", nullable = false)
     private Double totalSpent = 0.0;
 

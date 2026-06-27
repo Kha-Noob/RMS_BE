@@ -30,12 +30,15 @@ public class Booking {
     @Column(nullable = false)
     private Integer guests;
 
+    @Builder.Default
     @Column(nullable = false)
     private String status = "PENDING"; // PENDING, CONFIRMED, CHECKED_IN, CANCELLED, NO_SHOW
 
+    @Builder.Default
     @Column(nullable = false)
     private String source = "OFFLINE"; // ONLINE, OFFLINE
 
+    @Builder.Default
     @Column(nullable = false)
     private Boolean depositPaid = false;
 
@@ -54,9 +57,11 @@ public class Booking {
     @Column(name = "dietary_notes")
     private String dietaryNotes;
 
+    @Builder.Default
     @Column(name = "allergy_peanut")
     private Boolean allergyPeanut = false;
 
+    @Builder.Default
     @Column(name = "allergy_gluten")
     private Boolean allergyGluten = false;
 
@@ -66,18 +71,22 @@ public class Booking {
     @Column(name = "ordered_items_json", columnDefinition = "TEXT")
     private String orderedItemsJson;
 
+    @Builder.Default
     @Column(name = "deposit_amount")
     private Double depositAmount = 0.0;
 
     @Column(name = "payment_method")
     private String paymentMethod; // QR_PAY, CARD, WALLET
 
+    @Builder.Default
     @Column(name = "payment_status")
     private String paymentStatus = "PENDING"; // PENDING, PAID, REFUNDED
 
+    @Builder.Default
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 
+    @Builder.Default
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt = LocalDateTime.now();
 }
