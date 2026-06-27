@@ -59,6 +59,8 @@ public class HRController {
     private final RoleRepository roleRepository;
     private final BranchRepository branchRepository;
     private final BranchAccessService branchAccessService;
+    private final PayrollEntryRepository payrollEntryRepository;
+    private final AuditLogRepository auditLogRepository;
 
     private User getLoggedInUser() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -583,6 +585,8 @@ public class HRController {
             employeeAttendanceRepository.deleteByEmployeeId(id);
             leaveRequestRepository.deleteByEmployeeId(id);
             forgotClockRequestRepository.deleteByEmployeeId(id);
+            payrollEntryRepository.deleteByEmployeeId(id);
+            auditLogRepository.deleteByUserId(user.getId());
             
             employeeRepository.delete(employee);
             userRepository.delete(user);

@@ -36,6 +36,7 @@ import java.util.Optional;
 @Repository
 public interface PayrollEntryRepository extends JpaRepository<PayrollEntry, Long> {
     List<PayrollEntry> findByPayrollRunId(Long payrollRunId);
+    void deleteByEmployeeId(Long employeeId);
 }
 
 // --- LOYALTY & CRM ---

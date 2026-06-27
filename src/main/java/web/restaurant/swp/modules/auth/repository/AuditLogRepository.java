@@ -44,6 +44,8 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
         @org.springframework.data.repository.query.Param("actions") List<String> actions, 
         @org.springframework.data.repository.query.Param("branchId") String branchId
     );
+
+    void deleteByUserId(Long userId);
 }
 
 // --- BRANCH OPERATIONS ---
