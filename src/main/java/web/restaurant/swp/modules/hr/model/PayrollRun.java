@@ -44,6 +44,7 @@ public class PayrollRun {
     @Column(nullable = false)
     private String period; // e.g. "2024-05" (YYYY-MM)
 
+    @Builder.Default
     @Column(name = "run_date", nullable = false)
     private LocalDateTime runDate = LocalDateTime.now();
 

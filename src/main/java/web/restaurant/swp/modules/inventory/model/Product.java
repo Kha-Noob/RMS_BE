@@ -54,6 +54,7 @@ public class Product {
     @JoinColumn(name = "category_id")
     private Category category;
 
+    @Builder.Default
     @Column(name = "is_active", nullable = false)
     private boolean isActive = true;
 

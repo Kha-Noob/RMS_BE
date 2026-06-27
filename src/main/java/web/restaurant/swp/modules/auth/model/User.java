@@ -57,13 +57,16 @@ public class User {
     @Column(name = "two_factor_secret")
     private String twoFactorSecret;
 
+    @Builder.Default
     @Column(name = "is_two_factor_enabled", nullable = false)
     private boolean isTwoFactorEnabled = false;
 
+    @Builder.Default
     @Column(name = "is_active", nullable = false)
     private boolean isActive = true;
 
     // Support account locking after 5 failed attempts
+    @Builder.Default
     @Column(name = "failed_login_attempts", nullable = false)
     private int failedLoginAttempts = 0;
 
@@ -76,6 +79,7 @@ public class User {
         joinColumns = @JoinColumn(name = "user_id"),
         inverseJoinColumns = @JoinColumn(name = "role_id")
     )
+    @Builder.Default
     private Set<Role> roles = new HashSet<>();
 
     @ManyToOne(fetch = FetchType.EAGER)

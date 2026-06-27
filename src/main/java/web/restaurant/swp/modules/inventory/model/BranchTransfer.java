@@ -49,9 +49,11 @@ public class BranchTransfer {
     @JoinColumn(name = "target_branch_id", nullable = false)
     private Branch targetBranch;
 
+    @Builder.Default
     @Column(nullable = false)
     private String status = "PENDING"; // PENDING, APPROVED, SHIPPED, RECEIVED, CANCELLED
 
+    @Builder.Default
     @Column(name = "request_date", nullable = false)
     private LocalDateTime requestDate = LocalDateTime.now();
 

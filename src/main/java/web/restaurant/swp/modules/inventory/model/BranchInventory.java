@@ -50,9 +50,11 @@ public class BranchInventory {
     @JoinColumn(name = "item_id", nullable = false)
     private InventoryItem item;
 
+    @Builder.Default
     @Column(nullable = false)
     private Double quantity = 0.0;
 
+    @Builder.Default
     @Column(name = "reorder_point", nullable = false)
     private Double reorderPoint = 0.0;
 }

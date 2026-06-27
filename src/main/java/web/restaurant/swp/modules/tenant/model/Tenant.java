@@ -20,6 +20,7 @@ public class Tenant {
 
     private String domain;
 
+    @Builder.Default
     @Column(name = "is_active", nullable = false)
     private boolean isActive = true;
 

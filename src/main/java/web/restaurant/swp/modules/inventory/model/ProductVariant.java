@@ -60,6 +60,7 @@ public class ProductVariant {
     @Column(name = "branch_id", length = 36)
     private String branchId; // Optional branch override. If null, applies to all branches.
     
+    @Builder.Default
     @Column(name = "is_topping", nullable = false)
     private boolean isTopping = false; // Is this a topping or a main size variant
 }

@@ -51,6 +51,7 @@ public class UserSession {
     @Column(name = "ip_address")
     private String ipAddress;
 
+    @Builder.Default
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 

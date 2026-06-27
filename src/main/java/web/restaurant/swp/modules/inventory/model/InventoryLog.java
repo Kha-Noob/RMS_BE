@@ -57,6 +57,7 @@ public class InventoryLog {
 
     private String reason; // e.g. "Kiểm kho định kỳ", "Hủy nguyên liệu hỏng"
 
+    @Builder.Default
     @Column(name = "log_date", nullable = false)
     private LocalDateTime logDate = LocalDateTime.now();
 }

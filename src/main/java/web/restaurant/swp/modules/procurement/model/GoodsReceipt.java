@@ -45,6 +45,7 @@ public class GoodsReceipt {
     @JoinColumn(name = "purchase_order_id", nullable = false)
     private PurchaseOrder purchaseOrder;
 
+    @Builder.Default
     @Column(name = "received_date", nullable = false)
     private LocalDateTime receivedDate = LocalDateTime.now();
 
