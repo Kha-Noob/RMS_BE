@@ -45,6 +45,36 @@ public class Booking {
     @Column(name = "notes")
     private String notes;
 
+    @Column(name = "table_id")
+    private Long tableId;
+
+    @Column(name = "table_label")
+    private String tableLabel;
+
+    @Column(name = "dietary_notes")
+    private String dietaryNotes;
+
+    @Column(name = "allergy_peanut")
+    private Boolean allergyPeanut = false;
+
+    @Column(name = "allergy_gluten")
+    private Boolean allergyGluten = false;
+
+    @Column(name = "allergy_others")
+    private String allergyOthers;
+
+    @Column(name = "ordered_items_json", columnDefinition = "TEXT")
+    private String orderedItemsJson;
+
+    @Column(name = "deposit_amount")
+    private Double depositAmount = 0.0;
+
+    @Column(name = "payment_method")
+    private String paymentMethod; // QR_PAY, CARD, WALLET
+
+    @Column(name = "payment_status")
+    private String paymentStatus = "PENDING"; // PENDING, PAID, REFUNDED
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 
