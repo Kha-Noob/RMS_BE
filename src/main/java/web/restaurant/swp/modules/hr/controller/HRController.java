@@ -354,31 +354,67 @@ public class HRController {
         private String reason;
     }
 
-    @PostMapping("/api/hr/employees/add")
-    @org.springframework.transaction.annotation.Transactional
-    public ResponseEntity<?> addEmployee(
-            @RequestParam String name,
-            @RequestParam String email,
-            @RequestParam String password,
-            @RequestParam Long roleId,
-            @RequestParam String department,
-            @RequestParam String title,
-            @RequestParam Double baseSalary,
-            @RequestParam String salaryType,
-            @RequestParam(required = false) String branchId) {
+    @lombok.Data
+    public static class EmployeeRequest {
+        private Long id;
+        private String name;
+        private String email;
+        private String password;
+        private String department;
+        private String title;
+        private LocalDate hireDate;
+        private Double baseSalary;
+        private String salaryType;
+        private String branchId;
+    }
+
+    @GetMapping("/api/hr/employees")
+    public ResponseEntity<?> getEmployees() {
         try {
             User loggedIn = getLoggedInUser();
             if (loggedIn == null) {
                 return ResponseEntity.status(401).body("Chưa đăng nhập");
             }
 
-            if (userRepository.findByEmail(email).isPresent()) {
+            String activeBranchId = getActiveBranchId();
+            List<Employee> employees;
+
+            if (web.restaurant.swp.config.BranchContext.canSwitchBranch(loggedIn)) {
+                if (activeBranchId != null) {
+                    employees = employeeRepository.findByBranchBranchId(activeBranchId);
+                } else {
+                    employees = employeeRepository.findAll();
+                }
+            } else {
+                if (loggedIn.getBranch() != null) {
+                    employees = employeeRepository.findByBranchBranchId(loggedIn.getBranch().getBranchId());
+                } else {
+                    employees = List.of();
+                }
+            }
+
+            return ResponseEntity.ok(employees);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PostMapping("/api/hr/employees/add")
+    @org.springframework.transaction.annotation.Transactional
+    public ResponseEntity<?> addEmployee(@RequestBody EmployeeRequest request) {
+        try {
+            User loggedIn = getLoggedInUser();
+            if (loggedIn == null) {
+                return ResponseEntity.status(401).body("Chưa đăng nhập");
+            }
+
+            if (userRepository.findByEmail(request.getEmail()).isPresent()) {
                 return ResponseEntity.badRequest().body("Email đã tồn tại trong hệ thống.");
             }
 
             Branch branch = null;
             if (web.restaurant.swp.config.BranchContext.canSwitchBranch(loggedIn)) {
-                String targetBranchId = (branchId != null && !branchId.trim().isEmpty()) ? branchId : getActiveBranchId();
+                String targetBranchId = (request.getBranchId() != null && !request.getBranchId().trim().isEmpty()) ? request.getBranchId() : getActiveBranchId();
                 if (targetBranchId != null) {
                     BranchAccessService.ErrorHolder branchError = new BranchAccessService.ErrorHolder();
                     branchAccessService.validateEntityBranch(targetBranchId, branchError);
@@ -389,13 +425,34 @@ public class HRController {
                 branch = loggedIn.getBranch();
             }
 
-            Role role = roleRepository.findById(roleId)
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy vai trò."));
+            // Automatically determine role based on title/department, or default to EMPLOYEE
+            String roleName = "EMPLOYEE";
+            if (request.getTitle() != null) {
+                String titleLower = request.getTitle().toLowerCase();
+                if (titleLower.contains("admin")) {
+                    roleName = "ADMIN";
+                } else if (titleLower.contains("manager") || titleLower.contains("quản lý")) {
+                    roleName = "MANAGER";
+                } else if (titleLower.contains("hr") || titleLower.contains("nhân sự")) {
+                    roleName = "HR";
+                } else if (titleLower.contains("thu ngân") || titleLower.contains("cashier")) {
+                    roleName = "CASHIER";
+                } else if (titleLower.contains("bếp") || titleLower.contains("chef") || titleLower.contains("kitchen")) {
+                    roleName = "CHEF";
+                } else if (titleLower.contains("kho") || titleLower.contains("warehouse")) {
+                    roleName = "WAREHOUSE";
+                } else if (titleLower.contains("mua") || titleLower.contains("procurement")) {
+                    roleName = "PROCUREMENT";
+                }
+            }
+            Role role = roleRepository.findByName(roleName)
+                    .orElseGet(() -> roleRepository.findByName("EMPLOYEE")
+                            .orElseThrow(() -> new RuntimeException("Vai trò mặc định không tồn tại.")));
 
             User newUser = User.builder()
-                    .name(name)
-                    .email(email)
-                    .password(passwordEncoder.encode(password))
+                    .name(request.getName())
+                    .email(request.getEmail())
+                    .password(passwordEncoder.encode(request.getPassword() != null ? request.getPassword() : "123456"))
                     .isActive(true)
                     .branch(branch)
                     .tenant(loggedIn.getTenant())
@@ -406,11 +463,11 @@ public class HRController {
 
             Employee employee = Employee.builder()
                     .user(newUser)
-                    .department(department)
-                    .title(title)
-                    .hireDate(LocalDate.now())
-                    .baseSalary(baseSalary)
-                    .salaryType(salaryType)
+                    .department(request.getDepartment())
+                    .title(request.getTitle())
+                    .hireDate(request.getHireDate() != null ? request.getHireDate() : LocalDate.now())
+                    .baseSalary(request.getBaseSalary() != null ? request.getBaseSalary() : 0.0)
+                    .salaryType(request.getSalaryType() != null ? request.getSalaryType() : "Fixed")
                     .branch(branch)
                     .build();
 
@@ -423,35 +480,25 @@ public class HRController {
 
     @PostMapping("/api/hr/employees/update")
     @org.springframework.transaction.annotation.Transactional
-    public ResponseEntity<?> updateEmployee(
-            @RequestParam Long id,
-            @RequestParam String name,
-            @RequestParam String email,
-            @RequestParam(required = false) String password,
-            @RequestParam Long roleId,
-            @RequestParam String department,
-            @RequestParam String title,
-            @RequestParam Double baseSalary,
-            @RequestParam String salaryType,
-            @RequestParam(required = false) String branchId) {
+    public ResponseEntity<?> updateEmployee(@RequestBody EmployeeRequest request) {
         try {
             User loggedIn = getLoggedInUser();
             if (loggedIn == null) {
                 return ResponseEntity.status(401).body("Chưa đăng nhập");
             }
 
-            Employee employee = employeeRepository.findById(id)
+            Employee employee = employeeRepository.findById(request.getId())
                     .orElseThrow(() -> new RuntimeException("Không tìm thấy nhân viên."));
 
             User user = employee.getUser();
             
-            if (!user.getEmail().equalsIgnoreCase(email) && userRepository.findByEmail(email).isPresent()) {
+            if (!user.getEmail().equalsIgnoreCase(request.getEmail()) && userRepository.findByEmail(request.getEmail()).isPresent()) {
                 return ResponseEntity.badRequest().body("Email đã tồn tại.");
             }
 
             Branch branch = null;
             if (web.restaurant.swp.config.BranchContext.canSwitchBranch(loggedIn)) {
-                String targetBranchId = (branchId != null && !branchId.trim().isEmpty()) ? branchId : getActiveBranchId();
+                String targetBranchId = (request.getBranchId() != null && !request.getBranchId().trim().isEmpty()) ? request.getBranchId() : getActiveBranchId();
                 if (targetBranchId != null) {
                     BranchAccessService.ErrorHolder branchError = new BranchAccessService.ErrorHolder();
                     branchAccessService.validateEntityBranch(targetBranchId, branchError);
@@ -462,22 +509,45 @@ public class HRController {
                 branch = loggedIn.getBranch();
             }
 
-            Role role = roleRepository.findById(roleId)
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy vai trò."));
+            String roleName = "EMPLOYEE";
+            if (request.getTitle() != null) {
+                String titleLower = request.getTitle().toLowerCase();
+                if (titleLower.contains("admin")) {
+                    roleName = "ADMIN";
+                } else if (titleLower.contains("manager") || titleLower.contains("quản lý")) {
+                    roleName = "MANAGER";
+                } else if (titleLower.contains("hr") || titleLower.contains("nhân sự")) {
+                    roleName = "HR";
+                } else if (titleLower.contains("thu ngân") || titleLower.contains("cashier")) {
+                    roleName = "CASHIER";
+                } else if (titleLower.contains("bếp") || titleLower.contains("chef") || titleLower.contains("kitchen")) {
+                    roleName = "CHEF";
+                } else if (titleLower.contains("kho") || titleLower.contains("warehouse")) {
+                    roleName = "WAREHOUSE";
+                } else if (titleLower.contains("mua") || titleLower.contains("procurement")) {
+                    roleName = "PROCUREMENT";
+                }
+            }
+            Role role = roleRepository.findByName(roleName)
+                    .orElseGet(() -> roleRepository.findByName("EMPLOYEE")
+                            .orElseThrow(() -> new RuntimeException("Vai trò mặc định không tồn tại.")));
 
-            user.setName(name);
-            user.setEmail(email);
-            if (password != null && !password.trim().isEmpty()) {
-                user.setPassword(passwordEncoder.encode(password));
+            user.setName(request.getName());
+            user.setEmail(request.getEmail());
+            if (request.getPassword() != null && !request.getPassword().trim().isEmpty()) {
+                user.setPassword(passwordEncoder.encode(request.getPassword()));
             }
             user.setBranch(branch);
             user.setRoles(java.util.Set.of(role));
             userRepository.save(user);
 
-            employee.setDepartment(department);
-            employee.setTitle(title);
-            employee.setBaseSalary(baseSalary);
-            employee.setSalaryType(salaryType);
+            employee.setDepartment(request.getDepartment());
+            employee.setTitle(request.getTitle());
+            employee.setBaseSalary(request.getBaseSalary() != null ? request.getBaseSalary() : 0.0);
+            employee.setSalaryType(request.getSalaryType() != null ? request.getSalaryType() : "Fixed");
+            if (request.getHireDate() != null) {
+                employee.setHireDate(request.getHireDate());
+            }
             employee.setBranch(branch);
             employeeRepository.save(employee);
 
