@@ -64,25 +64,32 @@ public class S3Service {
     }
 
     public String uploadAvatar(MultipartFile file) throws IOException {
+        String url = uploadFile(file, "avatars");
+        if (url.startsWith("/")) {
+            return "http://localhost:8080" + url;
+        }
+        return url;
+    }
+
+    public String uploadFile(MultipartFile file, String folder) throws IOException {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("File is empty");
+        }
         String originalFilename = file.getOriginalFilename();
         String extension = "";
         if (originalFilename != null && originalFilename.contains(".")) {
             extension = originalFilename.substring(originalFilename.lastIndexOf("."));
         }
         String filename = UUID.randomUUID().toString() + extension;
-        String s3Key = "avatars/" + filename;
+        String s3Key = folder + "/" + filename;
 
         if (isMockMode) {
-            // Save locally for debug / test simulation
-            Path targetPath = Paths.get(localUploadDir, "avatars", filename).toAbsolutePath();
+            Path targetPath = Paths.get(localUploadDir, folder, filename).toAbsolutePath();
             Files.createDirectories(targetPath.getParent());
             file.transferTo(targetPath.toFile());
             log.info("Mock Mode: Saved file locally to {}", targetPath);
-            
-            // Return local server URL so it can be served and displayed immediately
-            return String.format("http://localhost:8080/api/floor-plans/files/avatars/%s", filename);
+            return String.format("/api/floor-plans/files/%s/%s", folder, filename);
         } else {
-            // Real S3 Upload
             try {
                 PutObjectRequest putObjectRequest = PutObjectRequest.builder()
                         .bucket(bucketName)
@@ -95,11 +102,10 @@ public class S3Service {
                 return String.format("https://%s.s3.%s.amazonaws.com/%s", bucketName, region, s3Key);
             } catch (Exception e) {
                 log.error("Failed to upload to AWS S3. Falling back to local copy.", e);
-                // Fallback to local copy
-                Path targetPath = Paths.get(localUploadDir, "avatars", filename).toAbsolutePath();
+                Path targetPath = Paths.get(localUploadDir, folder, filename).toAbsolutePath();
                 Files.createDirectories(targetPath.getParent());
                 file.transferTo(targetPath.toFile());
-                return String.format("http://localhost:8080/api/floor-plans/files/avatars/%s", filename);
+                return String.format("/api/floor-plans/files/%s/%s", folder, filename);
             }
         }
     }

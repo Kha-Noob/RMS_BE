@@ -13,6 +13,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
+import web.restaurant.swp.modules.auth.service.S3Service;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.multipart.MultipartFile;
 import java.util.List;
@@ -23,9 +24,7 @@ import java.util.List;
 public class ReviewFeedController {
     private final ReviewFeedService reviewFeedService;
     private final UserRepository userRepository;
-
-    @Value("${app.upload.dir:./uploads}")
-    private String uploadDir;
+    private final S3Service s3Service;
 
     @PostMapping("/public/feed/upload")
     public ResponseEntity<?> uploadFile(@RequestParam("file") MultipartFile file) {
@@ -33,17 +32,7 @@ public class ReviewFeedController {
             return ResponseEntity.badRequest().body("File is empty");
         }
         try {
-            String originalFilename = file.getOriginalFilename();
-            String ext = "";
-            if (originalFilename != null && originalFilename.contains(".")) {
-                ext = originalFilename.substring(originalFilename.lastIndexOf("."));
-            }
-            String filename = java.util.UUID.randomUUID().toString() + ext;
-            java.nio.file.Path targetPath = java.nio.file.Paths.get(uploadDir, "feed", filename);
-            java.nio.file.Files.createDirectories(targetPath.getParent());
-            file.transferTo(targetPath.toFile());
-
-            String fileUrl = "/api/floor-plans/files/feed/" + filename;
+            String fileUrl = s3Service.uploadFile(file, "feed");
             return ResponseEntity.ok(java.util.Map.of("url", fileUrl));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("Upload failed: " + e.getMessage());
