@@ -21,18 +21,35 @@ public class BookingService {
     private final BookingRepository bookingRepository;
     private final TableRepository tableRepository;
 
+    private static final int CLEANING_BUFFER_MINUTES = 15;
+
+    private boolean isOverlapping(LocalDateTime startA, int durationA, LocalDateTime startB, int durationB) {
+        LocalDateTime endA = startA.plusMinutes(durationA + CLEANING_BUFFER_MINUTES);
+        LocalDateTime endB = startB.plusMinutes(durationB + CLEANING_BUFFER_MINUTES);
+        return startA.isBefore(endB) && startB.isBefore(endA);
+    }
+
     /**
      * Get the list of table IDs that are already booked for a specific branch and time slot.
-     * We check for active bookings (status != CANCELLED) within a 2-hour window.
+     * Checks for overlap assuming a default 120-minute reservation.
      */
     public List<Long> getBookedTableIds(String branchId, LocalDateTime bookingTime) {
-        LocalDateTime start = bookingTime.minusHours(2);
-        LocalDateTime end = bookingTime.plusHours(2);
+        return getBookedTableIds(branchId, bookingTime, 120);
+    }
+
+    /**
+     * Get the list of table IDs that are already booked for a specific branch and time slot with custom duration.
+     */
+    public List<Long> getBookedTableIds(String branchId, LocalDateTime bookingTime, int newDurationMinutes) {
+        // Query active bookings within a 4-hour window on either side to minimize DB load
+        LocalDateTime queryStart = bookingTime.minusHours(4);
+        LocalDateTime queryEnd = bookingTime.plusHours(4);
         
-        List<Booking> activeBookings = bookingRepository.findByBranchIdAndStatusNotAndBookingTimeBetween(
-                branchId, "CANCELLED", start, end);
+        List<Booking> activeBookings = bookingRepository.findByBranchIdAndStatusNotInAndBookingTimeBetween(
+                branchId, List.of("CANCELLED", "NO_SHOW"), queryStart, queryEnd);
                 
         return activeBookings.stream()
+                .filter(b -> isOverlapping(b.getBookingTime(), b.getDurationMinutes() != null ? b.getDurationMinutes() : 120, bookingTime, newDurationMinutes))
                 .map(Booking::getTableId)
                 .filter(Objects::nonNull)
                 .toList();
@@ -43,6 +60,81 @@ public class BookingService {
      */
     @Transactional
     public Booking createBooking(Booking booking) {
+        // 1. Basic Metadata Validation
+        if (booking.getCustomerName() == null || booking.getCustomerName().trim().isEmpty()) {
+            throw new RuntimeException("Tên khách hàng không được để trống!");
+        }
+        if (booking.getCustomerPhone() == null || booking.getCustomerPhone().trim().isEmpty()) {
+            throw new RuntimeException("Số điện thoại không được để trống!");
+        }
+        // Validate phone number format (between 9 to 15 characters, containing numbers/spaces/hyphens/parentheses)
+        if (!booking.getCustomerPhone().matches("^[0-9\\+\\-\\s()]{9,15}$")) {
+            throw new RuntimeException("Số điện thoại không đúng định dạng!");
+        }
+        if (booking.getGuests() == null || booking.getGuests() <= 0) {
+            throw new RuntimeException("Số lượng khách phải lớn hơn 0!");
+        }
+        if (booking.getBranchId() == null || booking.getBranchId().trim().isEmpty()) {
+            throw new RuntimeException("Mã chi nhánh không được để trống!");
+        }
+        if (booking.getBookingTime() == null) {
+            throw new RuntimeException("Thời gian đặt bàn không được để trống!");
+        }
+
+        // 2. Booking Time restriction validation
+        if (booking.getBookingTime().isBefore(LocalDateTime.now().plusMinutes(15))) {
+            throw new RuntimeException("Thời gian đặt bàn phải ở tương lai (tối thiểu trước 15 phút)!");
+        }
+        if (booking.getBookingTime().isAfter(LocalDateTime.now().plusDays(30))) {
+            throw new RuntimeException("Chỉ được đặt bàn trước tối đa 30 ngày!");
+        }
+
+        if (booking.getDurationMinutes() == null || booking.getDurationMinutes() <= 0) {
+            booking.setDurationMinutes(120);
+        }
+
+        // 3. Double booking validation for the same customer using interval overlap
+        LocalDateTime queryStart = booking.getBookingTime().minusHours(4);
+        LocalDateTime queryEnd = booking.getBookingTime().plusHours(4);
+        List<Booking> customerBookings = bookingRepository.findByCustomerPhoneAndStatusInAndBookingTimeBetween(
+                booking.getCustomerPhone(), List.of("PENDING", "CONFIRMED", "CHECKED_IN"), queryStart, queryEnd);
+        
+        int newDuration = booking.getDurationMinutes();
+        boolean customerOverlap = customerBookings.stream()
+                .anyMatch(b -> isOverlapping(b.getBookingTime(), b.getDurationMinutes() != null ? b.getDurationMinutes() : 120, booking.getBookingTime(), newDuration));
+        
+        if (customerOverlap) {
+            throw new RuntimeException("Khách hàng đã có lượt đặt bàn khác đang hoạt động trong khoảng thời gian này!");
+        }
+
+        // 4. Table selection & capacity check
+        if (booking.getTableId() != null) {
+            web.restaurant.swp.modules.pos.model.TableEntity table = tableRepository.findById(booking.getTableId())
+                    .orElseThrow(() -> new RuntimeException("Bàn được chọn không tồn tại!"));
+
+            // Validate table belongs to the branch
+            if (table.getRoom() == null || table.getRoom().getBranch() == null || 
+                !table.getRoom().getBranch().getBranchId().equals(booking.getBranchId())) {
+                throw new RuntimeException("Bàn được chọn không thuộc chi nhánh này!");
+            }
+
+            // Validate capacity
+            if (table.getCapacity() < booking.getGuests()) {
+                throw new RuntimeException("Sức chứa của bàn không đủ cho số lượng khách!");
+            }
+
+            // Validate duplicate table booking
+            List<Long> bookedIds = getBookedTableIds(booking.getBranchId(), booking.getBookingTime(), newDuration);
+            if (bookedIds.contains(booking.getTableId())) {
+                throw new RuntimeException("Bàn này đã được đặt trước hoặc đang được sử dụng trong khoảng thời gian này!");
+            }
+            
+            // Set table label from DB if not provided
+            if (booking.getTableLabel() == null || booking.getTableLabel().trim().isEmpty()) {
+                booking.setTableLabel(table.getName());
+            }
+        }
+
         booking.setCreatedAt(LocalDateTime.now());
         booking.setUpdatedAt(LocalDateTime.now());
 
@@ -56,14 +148,6 @@ public class BookingService {
 
         if (booking.getSource() == null || booking.getSource().trim().isEmpty()) {
             booking.setSource("ONLINE");
-        }
-
-        // Validate table selection if specified
-        if (booking.getTableId() != null) {
-            List<Long> bookedIds = getBookedTableIds(booking.getBranchId(), booking.getBookingTime());
-            if (bookedIds.contains(booking.getTableId())) {
-                throw new RuntimeException("Bàn này đã được đặt trước hoặc đang được sử dụng trong khoảng thời gian này!");
-            }
         }
 
         // Calculate deposit if they pre-ordered items or selected VIP/holiday
@@ -90,22 +174,49 @@ public class BookingService {
             throw new RuntimeException("Không thể chỉnh sửa lượt đặt bàn trước giờ hẹn dưới 2 tiếng!");
         }
 
-        // Validate table conflict if the time or table has changed
-        if (updated.getTableId() != null && 
-            (!updated.getTableId().equals(existing.getTableId()) || !updated.getBookingTime().isEqual(existing.getBookingTime()))) {
+        LocalDateTime newTime = updated.getBookingTime() != null ? updated.getBookingTime() : existing.getBookingTime();
+        Long newTableId = updated.getTableId() != null ? updated.getTableId() : existing.getTableId();
+        String branchId = updated.getBranchId() != null ? updated.getBranchId() : existing.getBranchId();
+        Integer guests = updated.getGuests() != null ? updated.getGuests() : existing.getGuests();
+        int currentNewDuration = updated.getDurationMinutes() != null ? updated.getDurationMinutes() : (existing.getDurationMinutes() != null ? existing.getDurationMinutes() : 120);
+
+        // Validate new time if changed
+        if (updated.getBookingTime() != null && !updated.getBookingTime().isEqual(existing.getBookingTime())) {
+            if (updated.getBookingTime().isBefore(LocalDateTime.now().plusMinutes(15))) {
+                throw new RuntimeException("Thời gian đặt bàn mới phải ở tương lai (tối thiểu trước 15 phút)!");
+            }
+            if (updated.getBookingTime().isAfter(LocalDateTime.now().plusDays(30))) {
+                throw new RuntimeException("Chỉ được đặt bàn trước tối đa 30 ngày!");
+            }
+        }
+
+        // Validate table capacity & branch match if table/guests/time changes
+        if (newTableId != null && (updated.getTableId() != null || updated.getGuests() != null || updated.getBookingTime() != null)) {
+            web.restaurant.swp.modules.pos.model.TableEntity table = tableRepository.findById(newTableId)
+                    .orElseThrow(() -> new RuntimeException("Bàn được chọn không tồn tại!"));
+
+            if (table.getRoom() == null || table.getRoom().getBranch() == null || 
+                !table.getRoom().getBranch().getBranchId().equals(branchId)) {
+                throw new RuntimeException("Bàn được chọn không thuộc chi nhánh này!");
+            }
+
+            if (table.getCapacity() < guests) {
+                throw new RuntimeException("Sức chứa của bàn không đủ cho số lượng khách!");
+            }
+        }
+
+        // Validate table conflict if table, time, or duration changed
+        if (newTableId != null && (updated.getTableId() != null || updated.getBookingTime() != null || updated.getDurationMinutes() != null)) {
+            LocalDateTime start = newTime.minusHours(4);
+            LocalDateTime end = newTime.plusHours(4);
             
-            LocalDateTime start = updated.getBookingTime().minusHours(2);
-            LocalDateTime end = updated.getBookingTime().plusHours(2);
-            
-            List<Booking> conflicting = bookingRepository.findByBranchIdAndStatusNotAndBookingTimeBetween(
-                    updated.getBranchId() != null ? updated.getBranchId() : existing.getBranchId(), 
-                    "CANCELLED", start, end);
+            List<Booking> conflicting = bookingRepository.findByBranchIdAndStatusNotInAndBookingTimeBetween(
+                    branchId, List.of("CANCELLED", "NO_SHOW"), start, end);
             
             boolean conflict = conflicting.stream()
                     .filter(b -> !b.getId().equals(existing.getId()))
-                    .map(Booking::getTableId)
-                    .filter(Objects::nonNull)
-                    .anyMatch(tid -> tid.equals(updated.getTableId()));
+                    .filter(b -> b.getTableId() != null && b.getTableId().equals(newTableId))
+                    .anyMatch(b -> isOverlapping(b.getBookingTime(), b.getDurationMinutes() != null ? b.getDurationMinutes() : 120, newTime, currentNewDuration));
                     
             if (conflict) {
                 throw new RuntimeException("Bàn này đã được đặt trong khoảng thời gian mới được chọn!");

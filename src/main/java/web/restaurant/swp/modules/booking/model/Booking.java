@@ -83,6 +83,10 @@ public class Booking {
     private String paymentStatus = "PENDING"; // PENDING, PAID, REFUNDED
 
     @Builder.Default
+    @Column(name = "duration_minutes", nullable = false)
+    private Integer durationMinutes = 120;
+
+    @Builder.Default
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 
