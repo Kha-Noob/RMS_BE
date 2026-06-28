@@ -38,10 +38,13 @@ import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry
 public class WebSocketConfig implements WebSocketConfigurer {
 
     private final KdsWebSocketHandler kdsWebSocketHandler;
+    private final FeedWebSocketHandler feedWebSocketHandler;
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         registry.addHandler(kdsWebSocketHandler, "/ws/kds")
+                .setAllowedOrigins("*");
+        registry.addHandler(feedWebSocketHandler, "/ws/feed")
                 .setAllowedOrigins("*");
     }
 }

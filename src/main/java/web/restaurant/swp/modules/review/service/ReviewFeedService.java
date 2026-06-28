@@ -16,6 +16,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import web.restaurant.swp.config.FeedWebSocketHandler;
 import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
@@ -125,6 +126,9 @@ public class ReviewFeedService {
             }
         }
 
+        if ("PUBLIC".equals(savedPost.getStatus())) {
+            FeedWebSocketHandler.broadcast("NEW_POST");
+        }
         return savedPost;
     }
 
@@ -146,7 +150,9 @@ public class ReviewFeedService {
             postLikeRepository.save(newLike);
             post.setLikesCount(post.getLikesCount() + 1);
         }
-        return postRepository.save(post);
+        Post savedPost = postRepository.save(post);
+        FeedWebSocketHandler.broadcast("LIKE_UPDATE:" + savedPost.getId() + ":" + savedPost.getLikesCount());
+        return savedPost;
     }
 
     @Transactional
@@ -165,7 +171,9 @@ public class ReviewFeedService {
             .createdAt(LocalDateTime.now())
             .build();
             
-        return postCommentRepository.save(comment);
+        PostComment savedComment = postCommentRepository.save(comment);
+        FeedWebSocketHandler.broadcast("COMMENT_UPDATE:" + postId);
+        return savedComment;
     }
 
     @Transactional
@@ -190,7 +198,11 @@ public class ReviewFeedService {
         if (post.getReportCount() >= 3) {
             post.setStatus("PENDING_MODERATION"); // Automatically hide
         }
-        return postRepository.save(post);
+        Post savedPost = postRepository.save(post);
+        if (savedPost.getReportCount() >= 3) {
+            FeedWebSocketHandler.broadcast("POST_REMOVED:" + postId);
+        }
+        return savedPost;
     }
 
     @Transactional
@@ -241,7 +253,13 @@ public class ReviewFeedService {
             throw new RuntimeException("Trạng thái không hợp lệ.");
         }
         post.setStatus(status);
-        return postRepository.save(post);
+        Post savedPost = postRepository.save(post);
+        if ("PUBLIC".equals(status)) {
+            FeedWebSocketHandler.broadcast("NEW_POST");
+        } else {
+            FeedWebSocketHandler.broadcast("POST_REMOVED:" + postId);
+        }
+        return savedPost;
     }
     
     @Transactional
@@ -249,5 +267,6 @@ public class ReviewFeedService {
         Post post = postRepository.findById(postId)
             .orElseThrow(() -> new RuntimeException("Post not found"));
         postRepository.delete(post);
+        FeedWebSocketHandler.broadcast("POST_REMOVED:" + postId);
     }
 }
