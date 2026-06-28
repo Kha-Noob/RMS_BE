@@ -15,6 +15,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import web.restaurant.swp.modules.auth.service.S3Service;
 
 import web.restaurant.swp.config.FeedWebSocketHandler;
 import java.time.LocalDateTime;
@@ -34,6 +35,7 @@ public class ReviewFeedService {
     private final ProductRepository productRepository;
     private final CustomerRepository customerRepository;
     private final LoyaltyTransactionRepository loyaltyTransactionRepository;
+    private final S3Service s3Service;
 
     @Transactional
     public Post createPost(Post post, List<Long> taggedProductIds) {
@@ -263,9 +265,36 @@ public class ReviewFeedService {
     }
     
     @Transactional
+    public void softDeletePost(Long postId, String phone) {
+        Post post = postRepository.findById(postId)
+            .orElseThrow(() -> new RuntimeException("Post not found"));
+        if (post.getAuthorPhone() == null || !post.getAuthorPhone().equals(phone)) {
+            throw new RuntimeException("Bạn không có quyền xóa bài đăng này.");
+        }
+        post.setStatus("HIDDEN");
+        postRepository.save(post);
+        FeedWebSocketHandler.broadcast("POST_REMOVED:" + postId);
+    }
+
+    @Transactional
     public void deletePost(Long postId) {
         Post post = postRepository.findById(postId)
             .orElseThrow(() -> new RuntimeException("Post not found"));
+        
+        // Physical file deletion from S3/local
+        if (post.getMediaUrls() != null && !post.getMediaUrls().trim().isEmpty()) {
+            String[] urls = post.getMediaUrls().split(";");
+            for (String url : urls) {
+                if (url != null && !url.trim().isEmpty()) {
+                    try {
+                        s3Service.deleteFile(url);
+                    } catch (Exception e) {
+                        log.error("Failed to delete file during hard delete of post " + postId, e);
+                    }
+                }
+            }
+        }
+        
         postRepository.delete(post);
         FeedWebSocketHandler.broadcast("POST_REMOVED:" + postId);
     }

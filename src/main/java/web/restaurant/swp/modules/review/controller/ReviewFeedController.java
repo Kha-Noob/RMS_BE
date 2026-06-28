@@ -167,7 +167,25 @@ public class ReviewFeedController {
         }
     }
 
-    // 7. Admin Dashboard Posts List
+    // 7. Soft delete post (by author)
+    @DeleteMapping("/public/feed/posts/{id}")
+    public ResponseEntity<?> softDeletePost(
+            @PathVariable Long id,
+            @RequestParam(required = false) String phone) {
+        User user = getCurrentUser();
+        String callerPhone = (user != null) ? user.getPhone() : phone;
+        if (callerPhone == null || callerPhone.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body("Yêu cầu số điện thoại để thực hiện xóa bài viết.");
+        }
+        try {
+            reviewFeedService.softDeletePost(id, callerPhone);
+            return ResponseEntity.ok(java.util.Map.of("message", "Đã xóa bài viết thành công."));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    // 8. Admin Dashboard Posts List
     @GetMapping("/admin/feed/posts")
     public ResponseEntity<?> getAdminDashboard() {
         return ResponseEntity.ok(reviewFeedService.getAdminDashboardPosts());

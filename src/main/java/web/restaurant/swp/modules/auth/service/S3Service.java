@@ -10,6 +10,7 @@ import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 
 import jakarta.annotation.PostConstruct;
 import java.io.IOException;
@@ -106,6 +107,56 @@ public class S3Service {
                 Files.createDirectories(targetPath.getParent());
                 file.transferTo(targetPath.toFile());
                 return String.format("/api/floor-plans/files/%s/%s", folder, filename);
+            }
+        }
+    }
+
+    public void deleteFile(String fileUrl) {
+        if (fileUrl == null || fileUrl.trim().isEmpty()) {
+            return;
+        }
+
+        log.info("Request to delete file from URL: {}", fileUrl);
+
+        // 1. Check if the URL is a local mock path
+        if (fileUrl.contains("/api/floor-plans/files/")) {
+            try {
+                String subPath = fileUrl.substring(fileUrl.indexOf("/api/floor-plans/files/") + "/api/floor-plans/files/".length());
+                String[] parts = subPath.split("/");
+                if (parts.length == 2) {
+                    String folder = parts[0];
+                    String filename = parts[1];
+                    Path targetPath = Paths.get(localUploadDir, folder, filename).toAbsolutePath();
+                    if (Files.exists(targetPath)) {
+                        Files.delete(targetPath);
+                        log.info("Mock Mode: Deleted file locally at {}", targetPath);
+                    } else {
+                        log.warn("Mock Mode: File to delete does not exist at {}", targetPath);
+                    }
+                }
+            } catch (Exception e) {
+                log.error("Failed to delete local mock file: {}", fileUrl, e);
+            }
+        } 
+        // 2. If it is an AWS S3 URL
+        else if (fileUrl.contains(".amazonaws.com/")) {
+            if (isMockMode) {
+                log.warn("Running in Mock Mode. Cannot delete from AWS S3 URL: {}", fileUrl);
+                return;
+            }
+            try {
+                String host = bucketName + ".s3." + region + ".amazonaws.com/";
+                int keyStartIndex = fileUrl.indexOf(host);
+                if (keyStartIndex != -1) {
+                    String s3Key = fileUrl.substring(keyStartIndex + host.length());
+                    s3Client.deleteObject(DeleteObjectRequest.builder()
+                            .bucket(bucketName)
+                            .key(s3Key)
+                            .build());
+                    log.info("Successfully deleted file from S3: key = {}", s3Key);
+                }
+            } catch (Exception e) {
+                log.error("Failed to delete file from AWS S3: {}", fileUrl, e);
             }
         }
     }
