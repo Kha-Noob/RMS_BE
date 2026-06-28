@@ -208,6 +208,15 @@ public class ReviewFeedService {
         return blacklistKeywordRepository.save(bk);
     }
 
+    public List<BlacklistKeyword> getBlacklistKeywords() {
+        return blacklistKeywordRepository.findAll();
+    }
+
+    @Transactional
+    public void deleteBlacklistKeyword(Long id) {
+        blacklistKeywordRepository.deleteById(id);
+    }
+
     public List<Post> getPublicFeed() {
         return postRepository.findByStatusOrderByCreatedAtDesc("PUBLIC");
     }

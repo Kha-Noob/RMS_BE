@@ -13,6 +13,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.multipart.MultipartFile;
 import java.util.List;
 
 @RestController
@@ -21,6 +23,32 @@ import java.util.List;
 public class ReviewFeedController {
     private final ReviewFeedService reviewFeedService;
     private final UserRepository userRepository;
+
+    @Value("${app.upload.dir:./uploads}")
+    private String uploadDir;
+
+    @PostMapping("/public/feed/upload")
+    public ResponseEntity<?> uploadFile(@RequestParam("file") MultipartFile file) {
+        if (file.isEmpty()) {
+            return ResponseEntity.badRequest().body("File is empty");
+        }
+        try {
+            String originalFilename = file.getOriginalFilename();
+            String ext = "";
+            if (originalFilename != null && originalFilename.contains(".")) {
+                ext = originalFilename.substring(originalFilename.lastIndexOf("."));
+            }
+            String filename = java.util.UUID.randomUUID().toString() + ext;
+            java.nio.file.Path targetPath = java.nio.file.Paths.get(uploadDir, "feed", filename);
+            java.nio.file.Files.createDirectories(targetPath.getParent());
+            file.transferTo(targetPath.toFile());
+
+            String fileUrl = "/api/floor-plans/files/feed/" + filename;
+            return ResponseEntity.ok(java.util.Map.of("url", fileUrl));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Upload failed: " + e.getMessage());
+        }
+    }
 
     private User getCurrentUser() {
         try {
@@ -184,6 +212,23 @@ public class ReviewFeedController {
     public ResponseEntity<?> addBlacklist(@RequestParam String keyword) {
         try {
             return ResponseEntity.ok(reviewFeedService.addBlacklistKeyword(keyword));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    // 11. Admin get blacklist keywords
+    @GetMapping("/admin/feed/blacklist")
+    public ResponseEntity<?> getBlacklist() {
+        return ResponseEntity.ok(reviewFeedService.getBlacklistKeywords());
+    }
+
+    // 12. Admin delete blacklist keyword
+    @DeleteMapping("/admin/feed/blacklist/{id}")
+    public ResponseEntity<?> deleteBlacklist(@PathVariable Long id) {
+        try {
+            reviewFeedService.deleteBlacklistKeyword(id);
+            return ResponseEntity.ok("Xoá từ khoá thành công.");
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
