@@ -53,5 +53,6 @@ INSERT INTO users (id, email, password, name, is_active, failed_login_attempts, 
 (51, 'manager-2thang9@liteflow.com', '$2a$10$7eq/t4lk9f9gu4CNmWPIZOJ4ktC6wwMeSazvIZsiP8l.ceOVCVe4y', 'Nguyễn Quản Lý - Chi nhánh 2 Tháng 9', true, 0, '01-2thang9', false, 'tenant-1'),
 (52, 'manager-nguyenhuutho@liteflow.com', '$2a$10$7eq/t4lk9f9gu4CNmWPIZOJ4ktC6wwMeSazvIZsiP8l.ceOVCVe4y', 'Trần Quản Lý - Chi nhánh Nguyễn Hữu Thọ', true, 0, '11-NguyenHuuTho', false, 'tenant-1'),
 (53, 'warehouse-2thang9@liteflow.com', '$2a$10$7eq/t4lk9f9gu4CNmWPIZOJ4ktC6wwMeSazvIZsiP8l.ceOVCVe4y', 'Trần Thủ Kho', true, 0, '01-2thang9', false, 'tenant-1'),
-(54, 'procurement-2thang9@liteflow.com', '$2a$10$7eq/t4lk9f9gu4CNmWPIZOJ4ktC6wwMeSazvIZsiP8l.ceOVCVe4y', 'Lê Thu Mua', true, 0, '01-2thang9', false, 'tenant-1')
+(54, 'procurement-2thang9@liteflow.com', '$2a$10$7eq/t4lk9f9gu4CNmWPIZOJ4ktC6wwMeSazvIZsiP8l.ceOVCVe4y', 'Lê Thu Mua', true, 0, '01-2thang9', false, 'tenant-1'),
+(55, 'customer-test@liteflow.com', '$2a$10$7eq/t4lk9f9gu4CNmWPIZOJ4ktC6wwMeSazvIZsiP8l.ceOVCVe4y', 'Khách Hàng Test', true, 0, NULL, false, 'tenant-1')
 ON CONFLICT (id) DO NOTHING;

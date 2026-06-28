@@ -7,5 +7,6 @@ INSERT INTO roles (id, name) VALUES
 (5, 'HR'),
 (6, 'PROCUREMENT'),
 (7, 'WAREHOUSE'),
-(8, 'EMPLOYEE')
+(8, 'EMPLOYEE'),
+(9, 'CUSTOMER')
 ON CONFLICT (id) DO NOTHING;
