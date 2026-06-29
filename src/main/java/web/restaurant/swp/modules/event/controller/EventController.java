@@ -287,4 +287,72 @@ public class EventController {
 
         return ResponseEntity.ok(response);
     }
+
+    @GetMapping("/cooperator/bookings-summary")
+    public ResponseEntity<?> getCooperatorBookingsSummary() {
+        String email = getLoggedInUserEmail();
+        List<Event> myEvents = eventRepository.findByCreatedByOrderByCreatedAtDesc(email);
+        List<Map<String, Object>> summaryList = new ArrayList<>();
+
+        for (Event e : myEvents) {
+            List<Booking> eventBookings = bookingRepository.findByEventId(e.getId());
+            
+            int bookedCount = eventBookings.stream()
+                    .filter(b -> !"CANCELLED".equalsIgnoreCase(b.getStatus()))
+                    .mapToInt(Booking::getGuests)
+                    .sum();
+
+            double totalPaid = eventBookings.stream()
+                    .filter(b -> "PAID".equalsIgnoreCase(b.getPaymentStatus()))
+                    .mapToDouble(Booking::getDepositAmount)
+                    .sum();
+
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("eventId", e.getId());
+            map.put("title", e.getTitle());
+            map.put("date", e.getDate());
+            map.put("time", e.getTime());
+            map.put("price", e.getPrice());
+            map.put("capacity", e.getCapacity());
+            map.put("status", e.getStatus());
+            map.put("bookedCount", bookedCount);
+            map.put("totalPaid", totalPaid);
+            
+            summaryList.add(map);
+        }
+        return ResponseEntity.ok(summaryList);
+    }
+
+    @GetMapping("/cooperator/bookings/{eventId}/details")
+    public ResponseEntity<?> getCooperatorBookingDetails(@PathVariable Long eventId) {
+        String email = getLoggedInUserEmail();
+        Optional<Event> eventOpt = eventRepository.findById(eventId);
+        if (eventOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        Event e = eventOpt.get();
+        if (!e.getCreatedBy().equalsIgnoreCase(email) && !isAdmin()) {
+            return ResponseEntity.status(403).body("Bạn không có quyền xem thông tin của sự kiện này.");
+        }
+
+        List<Booking> eventBookings = bookingRepository.findByEventId(eventId);
+        List<Map<String, Object>> detailsList = new ArrayList<>();
+
+        for (Booking b : eventBookings) {
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("id", b.getId());
+            map.put("customerName", b.getCustomerName());
+            map.put("customerEmail", b.getCustomerEmail());
+            map.put("customerPhone", b.getCustomerPhone());
+            map.put("bookingTime", b.getBookingTime());
+            map.put("guests", b.getGuests());
+            map.put("depositAmount", b.getDepositAmount());
+            map.put("paymentMethod", b.getPaymentMethod());
+            map.put("paymentStatus", b.getPaymentStatus());
+            map.put("status", b.getStatus());
+            map.put("createdAt", b.getCreatedAt());
+            detailsList.add(map);
+        }
+        return ResponseEntity.ok(detailsList);
+    }
 }

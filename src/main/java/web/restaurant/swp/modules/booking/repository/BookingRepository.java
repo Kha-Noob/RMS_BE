@@ -16,4 +16,6 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             String phone, java.util.Collection<String> statuses, java.time.LocalDateTime start, java.time.LocalDateTime end);
     List<Booking> findByBranchIdAndStatusNotInAndBookingTimeBetween(
             String branchId, java.util.Collection<String> statuses, java.time.LocalDateTime start, java.time.LocalDateTime end);
+    List<Booking> findByEventId(Long eventId);
+    List<Booking> findByEventIdIn(List<Long> eventIds);
 }
