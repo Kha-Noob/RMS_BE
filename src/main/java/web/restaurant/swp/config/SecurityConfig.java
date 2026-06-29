@@ -77,6 +77,8 @@ public class SecurityConfig {
                 .requestMatchers("/ws/**").permitAll()
                 .requestMatchers("/h2-console/**").permitAll()
                 .requestMatchers("/api/public/**").permitAll()
+                .requestMatchers("/api/events/public").permitAll()
+                .requestMatchers("/api/events/**").hasAnyRole("ADMIN", "COOPERATOR")
                 .requestMatchers("/api/floor-plans/files/**").permitAll()
                 .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "MANAGER")
                 .requestMatchers("/api/hr/**").hasAnyRole("ADMIN", "MANAGER", "HR")
