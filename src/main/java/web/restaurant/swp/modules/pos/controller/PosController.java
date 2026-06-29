@@ -443,13 +443,23 @@ public class PosController {
             if (error.hasError()) return error.toResponse();
 
             Optional<BankSetting> settingOpt = bankSettingRepository.findByBranchBranchId(branchId);
-            if (settingOpt.isEmpty()) {
-                settingOpt = bankSettingRepository.findByBranchBranchId("01-2thang9");
+            if (settingOpt.isPresent()) {
+                return ResponseEntity.ok(settingOpt.get());
             }
-            if (settingOpt.isEmpty()) {
-                return ResponseEntity.ok(new HashMap<>());
+            
+            // Fallback to Tenant bank account details
+            User loggedInUser = getLoggedInUser();
+            if (loggedInUser != null && loggedInUser.getTenant() != null) {
+                web.restaurant.swp.modules.tenant.model.Tenant tenant = loggedInUser.getTenant();
+                Map<String, String> data = new HashMap<>();
+                data.put("bankName", tenant.getBankName() != null ? tenant.getBankName() : "");
+                data.put("bankCode", tenant.getBankBranch() != null ? tenant.getBankBranch() : "");
+                data.put("accountNumber", tenant.getBankAccountNo() != null ? tenant.getBankAccountNo() : "");
+                data.put("accountHolder", tenant.getBankAccountName() != null ? tenant.getBankAccountName() : "");
+                return ResponseEntity.ok(data);
             }
-            return ResponseEntity.ok(settingOpt.get());
+            
+            return ResponseEntity.ok(new HashMap<>());
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
@@ -459,7 +469,11 @@ public class PosController {
     public ResponseEntity<?> saveBankSetting(@RequestParam String bankName, @RequestParam String bankCode, @RequestParam String accountNumber, @RequestParam String accountHolder) {
         try {
             User loggedInUser = branchAccessService.getLoggedInUser();
-            if (loggedInUser == null || loggedInUser.getRoles().stream().noneMatch(r -> "ADMIN".equalsIgnoreCase(r.getName()))) {
+            if (loggedInUser == null || loggedInUser.getRoles().stream().noneMatch(r -> 
+                "ADMIN".equalsIgnoreCase(r.getName()) ||
+                "COOPERATOR".equalsIgnoreCase(r.getName()) ||
+                "MANAGER".equalsIgnoreCase(r.getName())
+            )) {
                 return ResponseEntity.status(403).body("Không có quyền thực hiện thao tác này.");
             }
 

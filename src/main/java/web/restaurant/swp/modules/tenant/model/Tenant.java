@@ -28,6 +28,18 @@ public class Tenant {
     @Column(name = "is_using_system_web", nullable = false)
     private boolean isUsingSystemWeb = false;
 
+    @Column(name = "bank_name")
+    private String bankName;
+
+    @Column(name = "bank_account_no")
+    private String bankAccountNo;
+
+    @Column(name = "bank_account_name")
+    private String bankAccountName;
+
+    @Column(name = "bank_branch")
+    private String bankBranch;
+
     @PrePersist
     public void ensureId() {
         if (this.tenantId == null) {
