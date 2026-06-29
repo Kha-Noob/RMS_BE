@@ -135,6 +135,39 @@ public class BookingService {
             }
         }
 
+        // 5. Event capacity validation if booking is for an event
+        if (booking.getTableId() == null && booking.getNotes() != null && booking.getNotes().contains("sự kiện")) {
+            String eventTitle = "";
+            int colonIndex = booking.getNotes().indexOf(":");
+            if (colonIndex != -1) {
+                eventTitle = booking.getNotes().substring(colonIndex + 1).trim();
+            } else {
+                eventTitle = booking.getNotes().trim();
+            }
+
+            int maxCapacity = getEventMaxCapacity(eventTitle);
+            if (maxCapacity < Integer.MAX_VALUE) {
+                java.time.LocalDate localDate = booking.getBookingTime().toLocalDate();
+                java.time.LocalDateTime start = localDate.atStartOfDay();
+                java.time.LocalDateTime end = localDate.atTime(java.time.LocalTime.MAX);
+                
+                List<Booking> bookings = bookingRepository.findByBranchIdAndBookingTimeBetween(booking.getBranchId(), start, end);
+                
+                final String finalTitle = eventTitle;
+                int currentBooked = bookings.stream()
+                        .filter(b -> b.getNotes() != null && b.getNotes().toLowerCase().contains(finalTitle.toLowerCase()))
+                        .filter(b -> !"CANCELLED".equals(b.getStatus()) && !"NO_SHOW".equals(b.getStatus()))
+                        .mapToInt(Booking::getGuests)
+                        .sum();
+
+                if (currentBooked + booking.getGuests() > maxCapacity) {
+                    throw new RuntimeException("Sự kiện này đã hết chỗ cho ngày " + 
+                            localDate.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")) + 
+                            "! (Chỉ còn lại " + (maxCapacity - currentBooked) + " chỗ)");
+                }
+            }
+        }
+
         booking.setCreatedAt(LocalDateTime.now());
         booking.setUpdatedAt(LocalDateTime.now());
 
@@ -284,5 +317,16 @@ public class BookingService {
         }
 
         return bookingRepository.save(existing);
+    }
+
+    private int getEventMaxCapacity(String eventTitle) {
+        if (eventTitle == null) return Integer.MAX_VALUE;
+        String title = eventTitle.toLowerCase();
+        if (title.contains("đêm nhạc acoustic")) return 40;
+        if (title.contains("sushi")) return 15;
+        if (title.contains("bia thủ công") || title.contains("bbq")) return 300;
+        if (title.contains("truffle")) return 20;
+        if (title.contains("cocktail") || title.contains("pha chế")) return 25;
+        return Integer.MAX_VALUE;
     }
 }

@@ -127,6 +127,33 @@ public class BookingController {
     }
 
     /**
+     * Get the current booked guests count for a specific event on a date.
+     */
+    @GetMapping("/api/public/bookings-capacity/event")
+    public ResponseEntity<?> getEventCapacity(
+            @RequestParam String branchId,
+            @RequestParam String eventTitle,
+            @RequestParam String date) {
+        try {
+            java.time.LocalDate localDate = java.time.LocalDate.parse(date);
+            java.time.LocalDateTime start = localDate.atStartOfDay();
+            java.time.LocalDateTime end = localDate.atTime(java.time.LocalTime.MAX);
+            
+            List<Booking> bookings = bookingRepository.findByBranchIdAndBookingTimeBetween(branchId, start, end);
+            
+            int bookedGuests = bookings.stream()
+                    .filter(b -> b.getNotes() != null && b.getNotes().toLowerCase().contains(eventTitle.toLowerCase()))
+                    .filter(b -> !"CANCELLED".equals(b.getStatus()) && !"NO_SHOW".equals(b.getStatus()))
+                    .mapToInt(Booking::getGuests)
+                    .sum();
+                    
+            return ResponseEntity.ok(java.util.Map.of("bookedGuests", bookedGuests));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(java.util.Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
      * Get details of a specific booking.
      */
     @GetMapping("/api/public/bookings/{id}")
