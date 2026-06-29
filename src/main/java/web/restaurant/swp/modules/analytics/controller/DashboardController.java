@@ -12,6 +12,8 @@ import web.restaurant.swp.modules.branch.repository.BranchRepository;
 import web.restaurant.swp.modules.branch.service.BranchAccessService;
 import web.restaurant.swp.modules.booking.model.Booking;
 import web.restaurant.swp.modules.booking.repository.BookingRepository;
+import web.restaurant.swp.modules.event.model.Event;
+import web.restaurant.swp.modules.event.repository.EventRepository;
 import web.restaurant.swp.modules.pos.model.Order;
 import web.restaurant.swp.modules.pos.repository.OrderRepository;
 import web.restaurant.swp.modules.review.model.CustomerReview;
@@ -32,6 +34,7 @@ public class DashboardController {
     private final OrderRepository orderRepository;
     private final BookingRepository bookingRepository;
     private final CustomerReviewRepository customerReviewRepository;
+    private final EventRepository eventRepository;
 
     @GetMapping("/api/dashboard/summary")
     public ResponseEntity<?> getDashboardSummary(
@@ -185,5 +188,95 @@ public class DashboardController {
             }
             return trend;
         }
+    }
+
+    private double parseTicketPrice(String priceStr) {
+        if (priceStr == null) return 0.0;
+        String clean = priceStr.toLowerCase();
+        if (clean.contains("miễn phí") || clean.contains("free") || clean.contains("free admission")) {
+            return 0.0;
+        }
+        // Keep only digits
+        clean = clean.replaceAll("[^0-9]", "");
+        if (clean.isEmpty()) return 0.0;
+        try {
+            return Double.parseDouble(clean);
+        } catch (Exception e) {
+            return 0.0;
+        }
+    }
+
+    @GetMapping("/api/dashboard/admin/commissions")
+    public ResponseEntity<?> getAdminCommissions() {
+        List<Event> events = eventRepository.findAll();
+        List<Booking> allBookings = bookingRepository.findAll();
+
+        double grandTotalCommission = 0.0;
+        double grandTotalRevenue = 0.0;
+        int grandTotalTickets = 0;
+        int activeEventsCount = 0;
+        int expiredEventsCount = 0;
+
+        List<Map<String, Object>> ledger = new ArrayList<>();
+        LocalDateTime now = LocalDateTime.now();
+
+        for (Event event : events) {
+            double ticketPrice = parseTicketPrice(event.getPrice());
+
+            List<Booking> eventBookings = allBookings.stream()
+                    .filter(b -> {
+                        if (b.getEventId() != null) {
+                            return b.getEventId().equals(event.getId());
+                        }
+                        return b.getNotes() != null && b.getNotes().toLowerCase().contains(event.getTitle().toLowerCase());
+                    })
+                    .filter(b -> !"CANCELLED".equals(b.getStatus()) && !"NO_SHOW".equals(b.getStatus()))
+                    .filter(b -> "PAID".equals(b.getPaymentStatus()) || (b.getDepositPaid() != null && b.getDepositPaid()))
+                    .collect(Collectors.toList());
+
+            int totalTickets = eventBookings.stream().mapToInt(Booking::getGuests).sum();
+            double totalRevenue = totalTickets * ticketPrice;
+            double commissionRate = event.getCommissionRate() != null ? event.getCommissionRate() : 10.0;
+            double commissionAmount = totalRevenue * (commissionRate / 100.0);
+
+            boolean isExpired = event.getBookingDeadline() != null && now.isAfter(event.getBookingDeadline());
+
+            if (isExpired) {
+                expiredEventsCount++;
+            } else {
+                activeEventsCount++;
+            }
+
+            grandTotalCommission += commissionAmount;
+            grandTotalRevenue += totalRevenue;
+            grandTotalTickets += totalTickets;
+
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("id", event.getId());
+            item.put("title", event.getTitle());
+            item.put("restaurantName", event.getRestaurantName());
+            item.put("isExpired", isExpired);
+            item.put("bookingDeadline", event.getBookingDeadline());
+            item.put("ticketPrice", ticketPrice);
+            item.put("totalTickets", totalTickets);
+            item.put("totalRevenue", totalRevenue);
+            item.put("commissionRate", commissionRate);
+            item.put("commissionAmount", commissionAmount);
+
+            ledger.add(item);
+        }
+
+        Map<String, Object> kpis = new LinkedHashMap<>();
+        kpis.put("totalCommission", grandTotalCommission);
+        kpis.put("totalRevenue", grandTotalRevenue);
+        kpis.put("totalTickets", grandTotalTickets);
+        kpis.put("activeEventsCount", activeEventsCount);
+        kpis.put("expiredEventsCount", expiredEventsCount);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("kpis", kpis);
+        response.put("ledger", ledger);
+
+        return ResponseEntity.ok(response);
     }
 }

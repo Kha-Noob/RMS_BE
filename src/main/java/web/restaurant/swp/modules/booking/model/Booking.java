@@ -90,6 +90,9 @@ public class Booking {
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 
+    @Column(name = "event_id")
+    private Long eventId;
+
     @Builder.Default
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt = LocalDateTime.now();

@@ -4,6 +4,9 @@ import web.restaurant.swp.modules.event.model.Event;
 import web.restaurant.swp.modules.event.repository.EventRepository;
 import web.restaurant.swp.modules.auth.model.User;
 import web.restaurant.swp.modules.auth.repository.UserRepository;
+import web.restaurant.swp.modules.booking.model.Booking;
+import web.restaurant.swp.modules.booking.repository.BookingRepository;
+import web.restaurant.swp.modules.tenant.model.Tenant;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -21,6 +24,7 @@ public class EventController {
 
     private final EventRepository eventRepository;
     private final UserRepository userRepository;
+    private final BookingRepository bookingRepository;
 
     private String getLoggedInUserEmail() {
         return SecurityContextHolder.getContext().getAuthentication().getName();
@@ -54,13 +58,31 @@ public class EventController {
         map.put("status", e.getStatus());
         map.put("commissionRate", e.getCommissionRate());
         map.put("isUsingSystemWeb", e.getIsUsingSystemWeb());
+        map.put("bookingDeadline", e.getBookingDeadline());
         map.put("createdBy", e.getCreatedBy());
+
+        // Attach bank account details of the event creator's tenant
+        if (e.getCreatedBy() != null) {
+            Optional<User> creatorOpt = userRepository.findByEmail(e.getCreatedBy());
+            if (creatorOpt.isPresent()) {
+                Tenant tenant = creatorOpt.get().getTenant();
+                if (tenant != null) {
+                    map.put("bankName", tenant.getBankName() != null ? tenant.getBankName() : "");
+                    map.put("bankAccountNo", tenant.getBankAccountNo() != null ? tenant.getBankAccountNo() : "");
+                    map.put("bankAccountName", tenant.getBankAccountName() != null ? tenant.getBankAccountName() : "");
+                    map.put("bankBranch", tenant.getBankBranch() != null ? tenant.getBankBranch() : "");
+                }
+            }
+        }
         return map;
     }
 
     @GetMapping("/public")
     public ResponseEntity<?> getPublicEvents() {
         List<Event> list = eventRepository.findByStatusOrderByCreatedAtDesc("APPROVED");
+        list = list.stream()
+                .filter(e -> e.getBookingDeadline() == null || LocalDateTime.now().isBefore(e.getBookingDeadline()))
+                .collect(Collectors.toList());
         return ResponseEntity.ok(list.stream().map(this::toEventDto).collect(Collectors.toList()));
     }
 
@@ -139,6 +161,7 @@ public class EventController {
         existing.setHighlights(details.getHighlights());
         existing.setBranchId(details.getBranchId());
         existing.setEventDates(details.getEventDates());
+        existing.setBookingDeadline(details.getBookingDeadline());
 
         // Auto-calculate system web usage from user's tenant
         boolean usingSystemWeb = false;
@@ -204,5 +227,64 @@ public class EventController {
         existing.setStatus("REJECTED");
         Event saved = eventRepository.save(existing);
         return ResponseEntity.ok(toEventDto(saved));
+    }
+
+    private double parseTicketPrice(String priceStr) {
+        if (priceStr == null) return 0.0;
+        String clean = priceStr.toLowerCase();
+        if (clean.contains("miễn phí") || clean.contains("free") || clean.contains("free admission")) {
+            return 0.0;
+        }
+        // Keep only digits
+        clean = clean.replaceAll("[^0-9]", "");
+        if (clean.isEmpty()) return 0.0;
+        try {
+            return Double.parseDouble(clean);
+        } catch (Exception e) {
+            return 0.0;
+        }
+    }
+
+    @GetMapping("/{id}/billing")
+    public ResponseEntity<?> getEventBilling(@PathVariable Long id) {
+        Optional<Event> opt = eventRepository.findById(id);
+        if (opt.isEmpty()) return ResponseEntity.notFound().build();
+
+        Event event = opt.get();
+        double ticketPrice = parseTicketPrice(event.getPrice());
+
+        // Query bookings
+        List<Booking> bookings = bookingRepository.findAll();
+        List<Booking> eventBookings = bookings.stream()
+                .filter(b -> {
+                    if (b.getEventId() != null) {
+                        return b.getEventId().equals(event.getId());
+                    }
+                    // Fallback to title matching
+                    return b.getNotes() != null && b.getNotes().toLowerCase().contains(event.getTitle().toLowerCase());
+                })
+                .filter(b -> !"CANCELLED".equals(b.getStatus()) && !"NO_SHOW".equals(b.getStatus()))
+                .filter(b -> "PAID".equals(b.getPaymentStatus()) || (b.getDepositPaid() != null && b.getDepositPaid()))
+                .collect(Collectors.toList());
+
+        int totalTickets = eventBookings.stream().mapToInt(Booking::getGuests).sum();
+        double totalRevenue = totalTickets * ticketPrice;
+        double commissionRate = event.getCommissionRate() != null ? event.getCommissionRate() : 10.0;
+        double commissionAmount = totalRevenue * (commissionRate / 100.0);
+
+        boolean isExpired = event.getBookingDeadline() != null && LocalDateTime.now().isAfter(event.getBookingDeadline());
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("eventId", event.getId());
+        response.put("eventTitle", event.getTitle());
+        response.put("bookingDeadline", event.getBookingDeadline());
+        response.put("isExpired", isExpired);
+        response.put("ticketPrice", ticketPrice);
+        response.put("totalTickets", totalTickets);
+        response.put("totalRevenue", totalRevenue);
+        response.put("commissionRate", commissionRate);
+        response.put("commissionAmount", commissionAmount);
+
+        return ResponseEntity.ok(response);
     }
 }

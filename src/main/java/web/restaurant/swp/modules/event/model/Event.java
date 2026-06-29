@@ -66,6 +66,9 @@ public class Event {
     @Column(name = "is_using_system_web", nullable = false)
     private Boolean isUsingSystemWeb;
 
+    @Column(name = "booking_deadline")
+    private LocalDateTime bookingDeadline;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 }

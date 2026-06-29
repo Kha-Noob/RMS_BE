@@ -10,10 +10,15 @@ import web.restaurant.swp.modules.booking.repository.BookingRepository;
 import web.restaurant.swp.modules.booking.service.BookingService;
 import web.restaurant.swp.modules.branch.model.Branch;
 import web.restaurant.swp.modules.branch.repository.BranchRepository;
+import web.restaurant.swp.modules.event.model.Event;
+import web.restaurant.swp.modules.event.repository.EventRepository;
 import web.restaurant.swp.modules.inventory.model.Product;
 import web.restaurant.swp.modules.inventory.model.ProductVariant;
 import web.restaurant.swp.modules.inventory.repository.ProductRepository;
 import web.restaurant.swp.modules.inventory.repository.ProductVariantRepository;
+import web.restaurant.swp.modules.branch.model.BankSetting;
+import web.restaurant.swp.modules.branch.repository.BankSettingRepository;
+import web.restaurant.swp.modules.tenant.model.Tenant;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -29,21 +34,46 @@ public class BookingController {
     private final BranchRepository branchRepository;
     private final ProductRepository productRepository;
     private final ProductVariantRepository productVariantRepository;
+    private final EventRepository eventRepository;
+    private final BankSettingRepository bankSettingRepository;
 
     /**
      * Get all active branches for reservation.
      */
     @GetMapping("/api/public/branches")
-    public ResponseEntity<?> getPublicBranches() {
-        List<Branch> branches = branchRepository.findByTenantTenantIdAndIsActiveTrue("tenant-1");
-        List<Map<String, Object>> result = branches.stream().map(b -> {
+    public ResponseEntity<?> getPublicBranches(@RequestParam(required = false) String tenantId) {
+        String targetTenantId = (tenantId != null && !tenantId.trim().isEmpty()) ? tenantId.trim() : "tenant-1";
+        List<Branch> branches = branchRepository.findByTenantTenantIdAndIsActiveTrue(targetTenantId);
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Branch b : branches) {
             Map<String, Object> map = new LinkedHashMap<>();
             map.put("branchId", b.getBranchId());
             map.put("name", b.getName());
             map.put("address", b.getAddress());
             map.put("phone", b.getPhone());
-            return map;
-        }).toList();
+
+            // Resolve bank settings (try Branch BankSetting first, fallback to Tenant Bank details)
+            Optional<BankSetting> settingOpt = bankSettingRepository.findByBranchBranchId(b.getBranchId());
+            if (settingOpt.isPresent()) {
+                BankSetting bs = settingOpt.get();
+                map.put("bankName", bs.getBankName() != null ? bs.getBankName() : "");
+                map.put("bankAccountNo", bs.getAccountNumber() != null ? bs.getAccountNumber() : "");
+                map.put("bankAccountName", bs.getAccountHolder() != null ? bs.getAccountHolder() : "");
+                map.put("bankBranch", bs.getBankCode() != null ? bs.getBankCode() : "");
+            } else if (b.getTenant() != null) {
+                Tenant tenant = b.getTenant();
+                map.put("bankName", tenant.getBankName() != null ? tenant.getBankName() : "");
+                map.put("bankAccountNo", tenant.getBankAccountNo() != null ? tenant.getBankAccountNo() : "");
+                map.put("bankAccountName", tenant.getBankAccountName() != null ? tenant.getBankAccountName() : "");
+                map.put("bankBranch", tenant.getBankBranch() != null ? tenant.getBankBranch() : "");
+            } else {
+                map.put("bankName", "");
+                map.put("bankAccountNo", "");
+                map.put("bankAccountName", "");
+                map.put("bankBranch", "");
+            }
+            result.add(map);
+        }
         return ResponseEntity.ok(result);
     }
 
@@ -118,6 +148,15 @@ public class BookingController {
     @PostMapping("/api/public/bookings")
     public ResponseEntity<?> createPublicBooking(@RequestBody Booking booking) {
         try {
+            if (booking.getEventId() != null) {
+                Optional<Event> eventOpt = eventRepository.findById(booking.getEventId());
+                if (eventOpt.isPresent()) {
+                    Event event = eventOpt.get();
+                    if (event.getBookingDeadline() != null && LocalDateTime.now().isAfter(event.getBookingDeadline())) {
+                        return ResponseEntity.badRequest().body(Map.of("error", "Thời hạn đăng ký vé sự kiện này đã kết thúc!"));
+                    }
+                }
+            }
             booking.setSource("ONLINE");
             Booking created = bookingService.createBooking(booking);
             return ResponseEntity.ok(created);
@@ -133,6 +172,7 @@ public class BookingController {
     public ResponseEntity<?> getEventCapacity(
             @RequestParam String branchId,
             @RequestParam String eventTitle,
+            @RequestParam(required = false) Long eventId,
             @RequestParam String date) {
         try {
             java.time.LocalDate localDate = java.time.LocalDate.parse(date);
@@ -142,7 +182,12 @@ public class BookingController {
             List<Booking> bookings = bookingRepository.findByBranchIdAndBookingTimeBetween(branchId, start, end);
             
             int bookedGuests = bookings.stream()
-                    .filter(b -> b.getNotes() != null && b.getNotes().toLowerCase().contains(eventTitle.toLowerCase()))
+                    .filter(b -> {
+                        if (eventId != null) {
+                            return b.getEventId() != null && b.getEventId().equals(eventId);
+                        }
+                        return b.getNotes() != null && b.getNotes().toLowerCase().contains(eventTitle.toLowerCase());
+                    })
                     .filter(b -> !"CANCELLED".equals(b.getStatus()) && !"NO_SHOW".equals(b.getStatus()))
                     .mapToInt(Booking::getGuests)
                     .sum();
