@@ -10,4 +10,5 @@ import java.util.Optional;
 public interface PostReportRepository extends JpaRepository<PostReport, Long> {
     Optional<PostReport> findByPostIdAndReporterPhone(Long postId, String reporterPhone);
     boolean existsByPostIdAndReporterPhone(Long postId, String reporterPhone);
+    java.util.List<PostReport> findByPostId(Long postId);
 }

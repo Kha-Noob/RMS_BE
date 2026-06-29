@@ -240,4 +240,79 @@ public class ReviewFeedController {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
+
+    // 13. Public Edit Post
+    @PutMapping("/public/feed/posts/{id}")
+    public ResponseEntity<?> editPost(
+            @PathVariable Long id,
+            @RequestBody CreatePostRequest req,
+            @RequestParam(required = false) String phone) {
+        User user = getCurrentUser();
+        String callerPhone = (user != null) ? user.getPhone() : phone;
+        if (callerPhone == null || callerPhone.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body("Yêu cầu số điện thoại để sửa bài viết.");
+        }
+        try {
+            Post updated = reviewFeedService.editPost(id, req.content, req.mediaUrls, req.rating, req.tableCheckIn, req.branchId, req.taggedProductIds, callerPhone);
+            return ResponseEntity.ok(updated);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    // 14. Public Delete Comment
+    @DeleteMapping("/public/feed/posts/{id}/comment/{commentId}")
+    public ResponseEntity<?> deleteComment(
+            @PathVariable Long id,
+            @PathVariable Long commentId,
+            @RequestParam(required = false) String phone) {
+        User user = getCurrentUser();
+        String callerPhone = (user != null) ? user.getPhone() : phone;
+        if (callerPhone == null || callerPhone.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body("Yêu cầu số điện thoại để xóa bình luận.");
+        }
+        try {
+            reviewFeedService.deleteComment(commentId, callerPhone);
+            return ResponseEntity.ok(java.util.Map.of("message", "Đã xóa bình luận thành công."));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    // 15. Public Get Leaderboard
+    @GetMapping("/public/feed/leaderboard")
+    public ResponseEntity<?> getLeaderboard() {
+        return ResponseEntity.ok(reviewFeedService.getLeaderboard());
+    }
+
+    // 16. Admin Dashboard Stats
+    @GetMapping("/admin/feed/dashboard/stats")
+    public ResponseEntity<?> getDashboardStats() {
+        return ResponseEntity.ok(reviewFeedService.getDashboardStats());
+    }
+
+    // 17. Admin Get Post Reports list
+    @GetMapping("/admin/feed/posts/{id}/reports")
+    public ResponseEntity<?> getPostReports(@PathVariable Long id) {
+        return ResponseEntity.ok(reviewFeedService.getPostReports(id));
+    }
+
+    // 18. DTO and Endpoint for Admin Reply
+    public static class ReplyRequest {
+        public String reply;
+    }
+
+    @PostMapping("/admin/feed/posts/{id}/reply")
+    public ResponseEntity<?> replyToPost(
+            @PathVariable Long id,
+            @RequestBody ReplyRequest req) {
+        User user = getCurrentUser();
+        String adminName = (user != null) ? user.getName() : "Ban quản trị";
+        try {
+            Post updated = reviewFeedService.replyToPost(id, req.reply, adminName);
+            return ResponseEntity.ok(updated);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
 }

@@ -9,7 +9,10 @@ import java.util.HashSet;
 import java.util.Set;
 
 @Entity
-@Table(name = "posts")
+@Table(name = "posts", indexes = {
+    @Index(name = "idx_post_branch_status_created", columnList = "branch_id, status, created_at DESC"),
+    @Index(name = "idx_post_author_phone", columnList = "author_phone")
+})
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -69,4 +72,21 @@ public class Post {
     @Builder.Default
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
+
+    @Builder.Default
+    @Column(name = "is_edited", nullable = false)
+    private Boolean isEdited = false;
+
+    @Builder.Default
+    @Column(name = "view_count", nullable = false)
+    private Integer viewCount = 0;
+
+    @Column(name = "restaurant_reply", columnDefinition = "TEXT")
+    private String restaurantReply;
+
+    @Column(name = "replied_at")
+    private LocalDateTime repliedAt;
+
+    @Column(name = "reply_author_name")
+    private String replyAuthorName;
 }

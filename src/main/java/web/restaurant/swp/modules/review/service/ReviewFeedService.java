@@ -37,8 +37,47 @@ public class ReviewFeedService {
     private final LoyaltyTransactionRepository loyaltyTransactionRepository;
     private final S3Service s3Service;
 
+    // In-memory rate limiting map (phone -> timestamps list)
+    private final java.util.Map<String, List<java.time.LocalDateTime>> postRateLimitMap = new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.Map<String, List<java.time.LocalDateTime>> commentRateLimitMap = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private String normalizeText(String text) {
+        if (text == null) return "";
+        // Remove accents (normalize Vietnamese)
+        String normalized = java.text.Normalizer.normalize(text, java.text.Normalizer.Form.NFD);
+        normalized = normalized.replaceAll("\\p{M}", "");
+        
+        // Remove all non-alphanumeric characters and lowercase it
+        return normalized.replaceAll("[^a-zA-Z0-9]", "").toLowerCase();
+    }
+
+    private void checkRateLimit(String phone, boolean isPost) {
+        if (phone == null || phone.trim().isEmpty()) {
+            return;
+        }
+        
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        java.time.LocalDateTime cutoff = now.minusMinutes(5);
+        
+        java.util.Map<String, List<java.time.LocalDateTime>> limitMap = isPost ? postRateLimitMap : commentRateLimitMap;
+        int maxAllowed = isPost ? 3 : 10;
+        String actionStr = isPost ? "bài đăng" : "bình luận";
+        
+        List<java.time.LocalDateTime> times = limitMap.computeIfAbsent(phone, k -> new java.util.ArrayList<>());
+        synchronized (times) {
+            times.removeIf(t -> t.isBefore(cutoff));
+            if (times.size() >= maxAllowed) {
+                throw new RuntimeException("Bạn đã vượt quá giới hạn " + maxAllowed + " " + actionStr + " trong 5 phút. Vui lòng thử lại sau.");
+            }
+            times.add(now);
+        }
+    }
+
     @Transactional
     public Post createPost(Post post, List<Long> taggedProductIds) {
+        // Rate limiting: Max 3 posts per 5 minutes
+        checkRateLimit(post.getAuthorPhone(), true);
+
         // AC1: Content length validation
         if (post.getContent() == null || post.getContent().trim().isEmpty()) {
             throw new RuntimeException("Nội dung bài viết không được trống.");
@@ -67,12 +106,13 @@ public class ReviewFeedService {
             }
         }
 
-        // AC3: Blacklist keyword check (Case-Insensitive)
+        // AC3: Blacklist keyword check (Robust normalized matching)
         List<BlacklistKeyword> blacklist = blacklistKeywordRepository.findAll();
-        String contentLower = post.getContent().toLowerCase();
+        String normalizedContent = normalizeText(post.getContent());
         boolean containsSensitiveWord = false;
         for (BlacklistKeyword bk : blacklist) {
-            if (contentLower.contains(bk.getKeyword().toLowerCase())) {
+            String normalizedKw = normalizeText(bk.getKeyword());
+            if (!normalizedKw.isEmpty() && normalizedContent.contains(normalizedKw)) {
                 containsSensitiveWord = true;
                 break;
             }
@@ -159,6 +199,9 @@ public class ReviewFeedService {
 
     @Transactional
     public PostComment addComment(Long postId, String authorName, String authorPhone, String content) {
+        // Rate limiting: Max 10 comments per 5 minutes
+        checkRateLimit(authorPhone, false);
+
         if (content == null || content.trim().isEmpty()) {
             throw new RuntimeException("Nội dung bình luận không được trống.");
         }
@@ -297,5 +340,127 @@ public class ReviewFeedService {
         
         postRepository.delete(post);
         FeedWebSocketHandler.broadcast("POST_REMOVED:" + postId);
+    }
+
+    @Transactional
+    public Post editPost(Long postId, String content, String mediaUrls, Integer rating, String tableCheckIn, String branchId, List<Long> taggedProductIds, String phone) {
+        Post post = postRepository.findById(postId)
+            .orElseThrow(() -> new RuntimeException("Post not found"));
+        
+        if (post.getAuthorPhone() == null || !post.getAuthorPhone().equals(phone)) {
+            throw new RuntimeException("Bạn không có quyền chỉnh sửa bài đăng này.");
+        }
+
+        if (content == null || content.trim().isEmpty()) {
+            throw new RuntimeException("Nội dung bài viết không được trống.");
+        }
+
+        post.setContent(content);
+        post.setMediaUrls(mediaUrls);
+        if (rating != null) {
+            post.setRating(rating);
+        }
+        post.setTableCheckIn(tableCheckIn);
+        post.setBranchId(branchId);
+
+        // Blacklist keyword check (Robust normalized matching)
+        List<BlacklistKeyword> blacklist = blacklistKeywordRepository.findAll();
+        String normalizedContent = normalizeText(content);
+        boolean containsSensitiveWord = false;
+        for (BlacklistKeyword bk : blacklist) {
+            String normalizedKw = normalizeText(bk.getKeyword());
+            if (!normalizedKw.isEmpty() && normalizedContent.contains(normalizedKw)) {
+                containsSensitiveWord = true;
+                break;
+            }
+        }
+        if (containsSensitiveWord) {
+            post.setStatus("PENDING_MODERATION");
+        } else {
+            post.setStatus("PUBLIC");
+        }
+
+        if (taggedProductIds != null) {
+            List<Product> products = productRepository.findAllById(taggedProductIds);
+            post.setTaggedProducts(new HashSet<>(products));
+        }
+
+        post.setIsEdited(true);
+        Post savedPost = postRepository.save(post);
+        FeedWebSocketHandler.broadcast("NEW_POST"); // Reload feed for clients
+        return savedPost;
+    }
+
+    @Transactional
+    public void deleteComment(Long commentId, String phone) {
+        PostComment comment = postCommentRepository.findById(commentId)
+            .orElseThrow(() -> new RuntimeException("Comment not found"));
+        
+        Post post = postRepository.findById(comment.getPostId())
+            .orElseThrow(() -> new RuntimeException("Post not found"));
+        
+        boolean isCommentAuthor = comment.getAuthorPhone() != null && comment.getAuthorPhone().equals(phone);
+        boolean isPostAuthor = post.getAuthorPhone() != null && post.getAuthorPhone().equals(phone);
+        
+        if (!isCommentAuthor && !isPostAuthor) {
+            throw new RuntimeException("Bạn không có quyền xóa bình luận này.");
+        }
+        
+        postCommentRepository.delete(comment);
+        FeedWebSocketHandler.broadcast("COMMENT_UPDATE:" + post.getId());
+    }
+
+    public List<Customer> getLeaderboard() {
+        return customerRepository.findTop5ByOrderByLoyaltyPointsDesc();
+    }
+
+    public java.util.Map<String, Object> getDashboardStats() {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime startOfToday = now.withHour(0).withMinute(0).withSecond(0).withNano(0);
+        LocalDateTime startOfWeek = now.minusDays(7).withHour(0).withMinute(0).withSecond(0).withNano(0);
+        LocalDateTime startOfMonth = now.minusDays(30).withHour(0).withMinute(0).withSecond(0).withNano(0);
+
+        List<Post> allPosts = postRepository.findAll();
+        
+        long postsToday = allPosts.stream().filter(p -> p.getCreatedAt().isAfter(startOfToday)).count();
+        long postsWeek = allPosts.stream().filter(p -> p.getCreatedAt().isAfter(startOfWeek)).count();
+        long postsMonth = allPosts.stream().filter(p -> p.getCreatedAt().isAfter(startOfMonth)).count();
+        
+        long pendingCount = allPosts.stream().filter(p -> "PENDING_MODERATION".equals(p.getStatus())).count();
+        long reportedCount = allPosts.stream().filter(p -> p.getReportCount() > 0).count();
+
+        // Rating distribution (1 to 5 stars)
+        java.util.Map<Integer, Long> ratingDist = allPosts.stream()
+            .collect(java.util.stream.Collectors.groupingBy(Post::getRating, java.util.stream.Collectors.counting()));
+        for (int i = 1; i <= 5; i++) {
+            ratingDist.putIfAbsent(i, 0L);
+        }
+
+        java.util.Map<String, Object> stats = new java.util.HashMap<>();
+        stats.put("postsToday", postsToday);
+        stats.put("postsWeek", postsWeek);
+        stats.put("postsMonth", postsMonth);
+        stats.put("pendingCount", pendingCount);
+        stats.put("reportedCount", reportedCount);
+        stats.put("ratingDistribution", ratingDist);
+        return stats;
+    }
+
+    public List<PostReport> getPostReports(Long postId) {
+        return postReportRepository.findByPostId(postId);
+    }
+
+    @Transactional
+    public Post replyToPost(Long postId, String reply, String adminName) {
+        Post post = postRepository.findById(postId)
+            .orElseThrow(() -> new RuntimeException("Post not found"));
+        
+        post.setRestaurantReply(reply);
+        post.setReplyAuthorName(adminName);
+        post.setRepliedAt(LocalDateTime.now());
+        
+        Post saved = postRepository.save(post);
+        FeedWebSocketHandler.broadcast("NEW_POST"); // Broadcast to update feed
+        return saved;
     }
 }
