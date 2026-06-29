@@ -7,6 +7,7 @@ import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import web.restaurant.swp.modules.auth.repository.RoleRepository;
+import web.restaurant.swp.modules.auth.repository.UserRepository;
 
 import java.io.File;
 import java.nio.charset.StandardCharsets;
@@ -22,6 +23,7 @@ public class DataSeeder implements CommandLineRunner {
     private final ConfigurableEnvironment environment;
 
     private final RoleRepository roleRepository;
+    private final UserRepository userRepository;
     private final JdbcTemplate jdbcTemplate;
 
     @Override
@@ -151,6 +153,8 @@ public class DataSeeder implements CommandLineRunner {
                 log.warn("Could not reset sequence for table: {}. Might not have an auto-increment id.", tableName);
             }
         }
+        log.info("Seeded Users list in Database:");
+        userRepository.findAll().forEach(u -> log.info(" -> Email: [{}], Name: [{}], Password Hash: [{}]", u.getEmail(), u.getName(), u.getPassword()));
 
         log.info("Database seeding successfully completed.");
     }
