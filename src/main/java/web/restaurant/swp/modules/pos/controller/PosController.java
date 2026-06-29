@@ -853,7 +853,7 @@ public class PosController {
             @RequestParam(required = false) String newBranchPhone) {
         try {
             User loggedInUser = getLoggedInUser();
-            if (loggedInUser == null || loggedInUser.getRoles().stream().noneMatch(r -> "ADMIN".equalsIgnoreCase(r.getName()))) {
+            if (loggedInUser == null || loggedInUser.getRoles().stream().noneMatch(r -> "ADMIN".equalsIgnoreCase(r.getName()) || "COOPERATOR".equalsIgnoreCase(r.getName()))) {
                 return ResponseEntity.status(403).body("Không có quyền thực hiện.");
             }
 
@@ -877,7 +877,7 @@ public class PosController {
                 }
                 Optional<Branch> existingBranch = branchRepository.findById(newBranchId.trim());
                 if (existingBranch.isPresent()) {
-                    branch = existingBranch.get();
+                    return ResponseEntity.badRequest().body("Mã chi nhánh đã tồn tại trong hệ thống. Vui lòng chọn mã khác.");
                 } else {
                     branch = Branch.builder()
                             .branchId(newBranchId.trim())
@@ -893,7 +893,8 @@ public class PosController {
                 branch = branchRepository.findById(branchId).orElse(null);
             }
 
-            String resolvedRoleName = isPartnerAdmin ? "MANAGER" : "ADMIN";
+            boolean isCooperator = loggedInUser.getRoles().stream().anyMatch(r -> "COOPERATOR".equalsIgnoreCase(r.getName()));
+            String resolvedRoleName = (isPartnerAdmin || isCooperator) ? "MANAGER" : "ADMIN";
             Role role = roleRepository.findByName(resolvedRoleName)
                     .orElseThrow(() -> new RuntimeException("Không tìm thấy vai trò " + resolvedRoleName));
 
@@ -929,7 +930,7 @@ public class PosController {
             @RequestParam(required = false) String newBranchPhone) {
         try {
             User loggedInUser = getLoggedInUser();
-            if (loggedInUser == null || loggedInUser.getRoles().stream().noneMatch(r -> "ADMIN".equalsIgnoreCase(r.getName()))) {
+            if (loggedInUser == null || loggedInUser.getRoles().stream().noneMatch(r -> "ADMIN".equalsIgnoreCase(r.getName()) || "COOPERATOR".equalsIgnoreCase(r.getName()))) {
                 return ResponseEntity.status(403).body("Không có quyền thực hiện.");
             }
 
@@ -974,7 +975,7 @@ public class PosController {
                 }
                 Optional<Branch> existingBranch = branchRepository.findById(newBranchId.trim());
                 if (existingBranch.isPresent()) {
-                    branch = existingBranch.get();
+                    return ResponseEntity.badRequest().body("Mã chi nhánh đã tồn tại trong hệ thống. Vui lòng chọn mã khác.");
                 } else {
                     branch = Branch.builder()
                             .branchId(newBranchId.trim())
@@ -991,7 +992,8 @@ public class PosController {
             }
             user.setBranch(branch);
 
-            String resolvedRoleName = isPartnerAdmin ? "MANAGER" : "ADMIN";
+            boolean isCooperator = loggedInUser.getRoles().stream().anyMatch(r -> "COOPERATOR".equalsIgnoreCase(r.getName()));
+            String resolvedRoleName = (isPartnerAdmin || isCooperator) ? "MANAGER" : "ADMIN";
             Role role = roleRepository.findByName(resolvedRoleName)
                     .orElseThrow(() -> new RuntimeException("Không tìm thấy vai trò."));
             user.setRoles(new HashSet<>(Arrays.asList(role)));
@@ -1008,7 +1010,7 @@ public class PosController {
     public ResponseEntity<?> deleteBranchAdmin(@RequestParam Long id) {
         try {
             User loggedInUser = getLoggedInUser();
-            if (loggedInUser == null || loggedInUser.getRoles().stream().noneMatch(r -> "ADMIN".equalsIgnoreCase(r.getName()))) {
+            if (loggedInUser == null || loggedInUser.getRoles().stream().noneMatch(r -> "ADMIN".equalsIgnoreCase(r.getName()) || "COOPERATOR".equalsIgnoreCase(r.getName()))) {
                 return ResponseEntity.status(403).body("Không có quyền thực hiện.");
             }
 
