@@ -58,6 +58,9 @@ public class Product {
     @Column(name = "is_active", nullable = false)
     private boolean isActive = true;
 
+    @Column(name = "ingredients", columnDefinition = "TEXT")
+    private String ingredients;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "tenant_id")
     private Tenant tenant;
