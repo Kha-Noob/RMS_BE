@@ -66,7 +66,7 @@ INSERT INTO users (id, email, password, name, is_active, failed_login_attempts, 
 (64, 'customer9@liteflow.com', '$2a$10$7eq/t4lk9f9gu4CNmWPIZOJ4ktC6wwMeSazvIZsiP8l.ceOVCVe4y', 'Ngô Mai Chi', true, 0, NULL, false, 'tenant-1'),
 (65, 'customer10@liteflow.com', '$2a$10$7eq/t4lk9f9gu4CNmWPIZOJ4ktC6wwMeSazvIZsiP8l.ceOVCVe4y', 'Dương Minh Quân', true, 0, NULL, false, 'tenant-1'),
 (66, 'cooperator1@liteflow.com', '$2a$10$7eq/t4lk9f9gu4CNmWPIZOJ4ktC6wwMeSazvIZsiP8l.ceOVCVe4y', 'Nhà hàng Hợp Tác 1', true, 0, NULL, false, 'tenant-1'),
-(67, 'cooperator2@liteflow.com', '$2a$10$7eq/t4lk9f9gu4CNmWPIZOJ4ktC6wwMeSazvIZsiP8l.ceOVCVe4y', 'Nhà hàng Hợp Tác 2', true, 0, NULL, false, 'tenant-1')
+(67, 'cooperator2@liteflow.com', '$2a$10$7eq/t4lk9f9gu4CNmWPIZOJ4ktC6wwMeSazvIZsiP8l.ceOVCVe4y', 'Nhà hàng Hợp Tác 2', true, 0, NULL, false, 'tenant-2')
 ON CONFLICT (id) DO NOTHING;
 
 UPDATE users SET phone = '0912345601' WHERE email = 'customer-test@liteflow.com';

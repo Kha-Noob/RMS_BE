@@ -24,6 +24,10 @@ public class Tenant {
     @Column(name = "is_active", nullable = false)
     private boolean isActive = true;
 
+    @Builder.Default
+    @Column(name = "is_using_system_web", nullable = false)
+    private boolean isUsingSystemWeb = false;
+
     @PrePersist
     public void ensureId() {
         if (this.tenantId == null) {

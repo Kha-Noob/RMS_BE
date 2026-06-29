@@ -37,6 +37,7 @@ public class AuthController {
                     response.put("isActive", user.isActive());
                     response.put("branchId", user.getBranch() != null ? user.getBranch().getBranchId() : null);
                     response.put("tenantId", user.getTenant() != null ? user.getTenant().getTenantId() : null);
+                    response.put("isUsingSystemWeb", user.getTenant() != null && user.getTenant().isUsingSystemWeb());
                     response.put("avatarUrl", user.getAvatarUrl());
                     response.put("phone", user.getPhone());
                     response.put("birthday", user.getBirthday());

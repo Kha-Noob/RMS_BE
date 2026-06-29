@@ -2,6 +2,8 @@ package web.restaurant.swp.modules.event.controller;
 
 import web.restaurant.swp.modules.event.model.Event;
 import web.restaurant.swp.modules.event.repository.EventRepository;
+import web.restaurant.swp.modules.auth.model.User;
+import web.restaurant.swp.modules.auth.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -18,6 +20,7 @@ import java.util.stream.Collectors;
 public class EventController {
 
     private final EventRepository eventRepository;
+    private final UserRepository userRepository;
 
     private String getLoggedInUserEmail() {
         return SecurityContextHolder.getContext().getAuthentication().getName();
@@ -91,10 +94,21 @@ public class EventController {
             event.setStatus("PENDING");
         }
 
-        if (event.getIsUsingSystemWeb() == null) {
-            event.setIsUsingSystemWeb(false);
+        // Auto-calculate system web usage from user's tenant
+        boolean usingSystemWeb = false;
+        Optional<User> userOpt = userRepository.findByEmail(email);
+        if (userOpt.isPresent()) {
+            User user = userOpt.get();
+            if (user.getTenant() != null) {
+                usingSystemWeb = user.getTenant().isUsingSystemWeb();
+            }
         }
-        event.setCommissionRate(event.getIsUsingSystemWeb() ? 5.0 : 10.0);
+        if (isAdmin()) {
+            usingSystemWeb = true;
+        }
+
+        event.setIsUsingSystemWeb(usingSystemWeb);
+        event.setCommissionRate(usingSystemWeb ? 5.0 : 10.0);
 
         Event saved = eventRepository.save(event);
         return ResponseEntity.ok(toEventDto(saved));
@@ -126,10 +140,21 @@ public class EventController {
         existing.setBranchId(details.getBranchId());
         existing.setEventDates(details.getEventDates());
 
-        if (details.getIsUsingSystemWeb() != null) {
-            existing.setIsUsingSystemWeb(details.getIsUsingSystemWeb());
+        // Auto-calculate system web usage from user's tenant
+        boolean usingSystemWeb = false;
+        Optional<User> userOpt = userRepository.findByEmail(email);
+        if (userOpt.isPresent()) {
+            User user = userOpt.get();
+            if (user.getTenant() != null) {
+                usingSystemWeb = user.getTenant().isUsingSystemWeb();
+            }
         }
-        existing.setCommissionRate(existing.getIsUsingSystemWeb() ? 5.0 : 10.0);
+        if (isAdmin()) {
+            usingSystemWeb = true;
+        }
+
+        existing.setIsUsingSystemWeb(usingSystemWeb);
+        existing.setCommissionRate(usingSystemWeb ? 5.0 : 10.0);
 
         if (!isAdmin()) {
             existing.setStatus("PENDING");

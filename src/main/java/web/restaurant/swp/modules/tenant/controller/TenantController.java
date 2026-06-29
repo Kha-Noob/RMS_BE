@@ -33,6 +33,7 @@ public class TenantController {
             map.put("name", t.getName());
             map.put("domain", t.getDomain());
             map.put("isActive", t.isActive());
+            map.put("isUsingSystemWeb", t.isUsingSystemWeb());
 
             // Find owner user (role cooperator) for this tenant
             Optional<User> ownerOpt = userRepository.findByTenantTenantId(t.getTenantId())
@@ -53,12 +54,13 @@ public class TenantController {
     }
 
     @PostMapping
-    public ResponseEntity<?> createTenant(@RequestBody Map<String, String> payload) {
-        String name = payload.get("name");
-        String domain = payload.get("domain");
-        String ownerEmail = payload.get("ownerEmail");
-        String ownerName = payload.get("ownerName");
-        String ownerPassword = payload.get("ownerPassword");
+    public ResponseEntity<?> createTenant(@RequestBody Map<String, Object> payload) {
+        String name = (String) payload.get("name");
+        String domain = (String) payload.get("domain");
+        String ownerEmail = (String) payload.get("ownerEmail");
+        String ownerName = (String) payload.get("ownerName");
+        String ownerPassword = (String) payload.get("ownerPassword");
+        Boolean isUsingSystemWeb = (Boolean) payload.get("isUsingSystemWeb");
 
         if (name == null || name.trim().isEmpty() ||
             ownerEmail == null || ownerEmail.trim().isEmpty() ||
@@ -75,6 +77,7 @@ public class TenantController {
                 .name(name.trim())
                 .domain(domain != null ? domain.trim() : "")
                 .isActive(true)
+                .isUsingSystemWeb(isUsingSystemWeb != null ? isUsingSystemWeb : false)
                 .build();
         tenant = tenantRepository.save(tenant);
 
@@ -109,6 +112,9 @@ public class TenantController {
         }
         if (payload.containsKey("isActive")) {
             tenant.setActive((Boolean) payload.get("isActive"));
+        }
+        if (payload.containsKey("isUsingSystemWeb")) {
+            tenant.setUsingSystemWeb((Boolean) payload.get("isUsingSystemWeb"));
         }
 
         tenant = tenantRepository.save(tenant);
