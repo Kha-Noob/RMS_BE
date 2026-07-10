@@ -37,6 +37,8 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.List;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 
 @Service
 @RequiredArgsConstructor
@@ -86,23 +88,26 @@ public class AIService {
                         + "}";
 
 
-                HttpClient client = HttpClient.newHttpClient();
+                HttpClient client = HttpClient.newBuilder()
+                        .version(HttpClient.Version.HTTP_1_1)
+                        .connectTimeout(java.time.Duration.ofSeconds(15))
+                        .build();
                 HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + apiKey))
+                        .uri(URI.create("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + apiKey))
+                        .timeout(java.time.Duration.ofSeconds(30))
                         .header("Content-Type", "application/json")
                         .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                         .build();
 
                 HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
                 if (response.statusCode() == 200) {
-                    // Extract response content
                     String body = response.body();
-                    int textStart = body.indexOf("\"text\": \"") + 9;
-                    int textEnd = body.indexOf("\"", textStart);
-                    if (textStart > 8 && textEnd > textStart) {
-                        return body.substring(textStart, textEnd).replace("\\n", "\n").replace("\\\"", "\"");
+                    try {
+                        JsonNode root = new ObjectMapper().readTree(body);
+                        return root.path("candidates").path(0).path("content").path("parts").path(0).path("text").asText();
+                    } catch (Exception parseEx) {
+                        log.error("Failed to parse Gemini response via Jackson", parseEx);
                     }
-
                 }
             } catch (Exception e) {
                 log.error("Error calling OpenAI API, falling back to local analysis", e);
@@ -167,9 +172,13 @@ public class AIService {
                         + "}]"
                         + "}";
 
-                HttpClient client = HttpClient.newHttpClient();
+                HttpClient client = HttpClient.newBuilder()
+                        .version(HttpClient.Version.HTTP_1_1)
+                        .connectTimeout(java.time.Duration.ofSeconds(15))
+                        .build();
                 HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + apiKey))
+                        .uri(URI.create("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + apiKey))
+                        .timeout(java.time.Duration.ofSeconds(30))
                         .header("Content-Type", "application/json")
                         .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                         .build();
@@ -177,10 +186,10 @@ public class AIService {
                 HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
                 if (response.statusCode() == 200) {
                     String body = response.body();
-                    int textStart = body.indexOf("\"text\": \"") + 9;
-                    int textEnd = body.indexOf("\"", textStart);
-                    if (textStart > 8 && textEnd > textStart) {
-                        String jsonResponse = body.substring(textStart, textEnd).replace("\\n", "\n").replace("\\\"", "\"");
+                    try {
+                        JsonNode root = new ObjectMapper().readTree(body);
+                        String rawText = root.path("candidates").path(0).path("content").path("parts").path(0).path("text").asText();
+                        String jsonResponse = rawText;
                         if (jsonResponse.contains("```json")) {
                             jsonResponse = jsonResponse.substring(jsonResponse.indexOf("```json") + 7);
                             if (jsonResponse.contains("```")) {
@@ -193,6 +202,8 @@ public class AIService {
                             }
                         }
                         return jsonResponse.trim();
+                    } catch (Exception parseEx) {
+                        log.error("Failed to parse Gemini response via Jackson", parseEx);
                     }
                 }
             } catch (Exception e) {
