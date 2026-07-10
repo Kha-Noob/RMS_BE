@@ -8,6 +8,8 @@ import web.restaurant.swp.modules.loyalty.repository.CustomerRepository;
 import web.restaurant.swp.modules.loyalty.repository.LoyaltyTransactionRepository;
 import web.restaurant.swp.modules.review.model.*;
 import web.restaurant.swp.modules.review.repository.*;
+import web.restaurant.swp.modules.branch.repository.BranchRepository;
+import web.restaurant.swp.modules.branch.model.Branch;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -36,6 +38,7 @@ public class ReviewFeedService {
     private final CustomerRepository customerRepository;
     private final LoyaltyTransactionRepository loyaltyTransactionRepository;
     private final S3Service s3Service;
+    private final BranchRepository branchRepository;
 
     // In-memory rate limiting map (phone -> timestamps list)
     private final java.util.Map<String, List<java.time.LocalDateTime>> postRateLimitMap = new java.util.concurrent.ConcurrentHashMap<>();
@@ -280,6 +283,15 @@ public class ReviewFeedService {
     
     public Page<Post> getPublicFeed(Pageable pageable) {
         return postRepository.findByStatusOrderByCreatedAtDesc("PUBLIC", pageable);
+    }
+
+    public Page<Post> getPublicFeedForTenant(String tenantId, Pageable pageable) {
+        List<Branch> branches = branchRepository.findByTenantTenantId(tenantId);
+        List<String> branchIds = branches.stream().map(Branch::getBranchId).toList();
+        if (branchIds.isEmpty()) {
+            return org.springframework.data.domain.Page.empty(pageable);
+        }
+        return postRepository.findByBranchIdInAndStatusOrderByCreatedAtDesc(branchIds, "PUBLIC", pageable);
     }
 
     public List<PostComment> getCommentsForPost(Long postId) {

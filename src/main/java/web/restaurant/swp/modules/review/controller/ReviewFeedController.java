@@ -108,6 +108,15 @@ public class ReviewFeedController {
         return ResponseEntity.ok(reviewFeedService.getPublicFeed(pageable));
     }
 
+    @GetMapping("/public/feed/posts/tenant/{tenantId}")
+    public ResponseEntity<?> getFeedForTenant(
+            @PathVariable String tenantId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        return ResponseEntity.ok(reviewFeedService.getPublicFeedForTenant(tenantId, pageable));
+    }
+
     // 3. Toggle Like
     @PostMapping("/public/feed/posts/{id}/like")
     public ResponseEntity<?> toggleLike(
