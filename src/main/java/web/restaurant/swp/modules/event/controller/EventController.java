@@ -86,6 +86,22 @@ public class EventController {
         return ResponseEntity.ok(list.stream().map(this::toEventDto).collect(Collectors.toList()));
     }
 
+    @GetMapping("/public/tenant/{tenantId}")
+    public ResponseEntity<?> getPublicEventsForTenant(@PathVariable String tenantId) {
+        List<Event> list = eventRepository.findByStatusOrderByCreatedAtDesc("APPROVED");
+        List<Event> filtered = list.stream()
+                .filter(e -> e.getBookingDeadline() == null || LocalDateTime.now().isBefore(e.getBookingDeadline()))
+                .filter(e -> {
+                    if (e.getCreatedBy() == null) return false;
+                    Optional<User> creatorOpt = userRepository.findByEmail(e.getCreatedBy());
+                    if (creatorOpt.isEmpty()) return false;
+                    Tenant tenant = creatorOpt.get().getTenant();
+                    return tenant != null && tenantId.equals(tenant.getTenantId());
+                })
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(filtered.stream().map(this::toEventDto).collect(Collectors.toList()));
+    }
+
     @GetMapping("/admin/all")
     public ResponseEntity<?> getAdminAllEvents() {
         List<Event> list = eventRepository.findAll();

@@ -252,6 +252,67 @@ public class BookingController {
         } else if (email != null && !email.trim().isEmpty()) {
             list = bookingRepository.findByCustomerEmailOrderByBookingTimeDesc(email);
         }
-        return ResponseEntity.ok(list);
+
+        List<Map<String, Object>> enrichedList = new ArrayList<>();
+        for (Booking b : list) {
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("id", b.getId());
+            map.put("customerName", b.getCustomerName());
+            map.put("customerPhone", b.getCustomerPhone());
+            map.put("customerEmail", b.getCustomerEmail());
+            map.put("bookingTime", b.getBookingTime());
+            map.put("guests", b.getGuests());
+            map.put("status", b.getStatus());
+            map.put("source", b.getSource());
+            map.put("depositPaid", b.getDepositPaid());
+            map.put("branchId", b.getBranchId());
+            map.put("notes", b.getNotes());
+            map.put("tableId", b.getTableId());
+            map.put("tableLabel", b.getTableLabel());
+            map.put("dietaryNotes", b.getDietaryNotes());
+            map.put("allergyPeanut", b.getAllergyPeanut());
+            map.put("allergyGluten", b.getAllergyGluten());
+            map.put("allergyOthers", b.getAllergyOthers());
+            map.put("orderedItemsJson", b.getOrderedItemsJson());
+            map.put("depositAmount", b.getDepositAmount());
+            map.put("paymentMethod", b.getPaymentMethod());
+            map.put("paymentStatus", b.getPaymentStatus());
+            map.put("durationMinutes", b.getDurationMinutes());
+            map.put("createdAt", b.getCreatedAt());
+            map.put("eventId", b.getEventId());
+            map.put("updatedAt", b.getUpdatedAt());
+
+            // Enrich Branch details
+            if (b.getBranchId() != null) {
+                Optional<Branch> branchOpt = branchRepository.findById(b.getBranchId());
+                if (branchOpt.isPresent()) {
+                    Branch br = branchOpt.get();
+                    map.put("branchName", br.getName());
+                    map.put("branchAddress", br.getAddress());
+                } else {
+                    map.put("branchName", b.getBranchId());
+                    map.put("branchAddress", "");
+                }
+            } else {
+                map.put("branchName", "");
+                map.put("branchAddress", "");
+            }
+
+            // Enrich Event details
+            if (b.getEventId() != null) {
+                Optional<Event> eventOpt = eventRepository.findById(b.getEventId());
+                if (eventOpt.isPresent()) {
+                    Event ev = eventOpt.get();
+                    map.put("eventTitle", ev.getTitle());
+                    map.put("eventLocation", ev.getLocation());
+                    map.put("eventDate", ev.getDate());
+                    map.put("eventTime", ev.getTime());
+                }
+            }
+
+            enrichedList.add(map);
+        }
+
+        return ResponseEntity.ok(enrichedList);
     }
 }

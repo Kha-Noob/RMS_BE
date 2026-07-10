@@ -1,0 +1,20 @@
+CREATE TABLE tenant_custom_pages (
+    id SERIAL PRIMARY KEY,
+    tenant_id VARCHAR(36) NOT NULL UNIQUE,
+    restaurant_name VARCHAR(255) NOT NULL,
+    description TEXT,
+    style_prompt TEXT,
+    primary_color VARCHAR(10) DEFAULT '#25439b',
+    secondary_color VARCHAR(10) DEFAULT '#3b82f6',
+    background_color VARCHAR(10) DEFAULT '#ffffff',
+    text_color VARCHAR(10) DEFAULT '#0f172a',
+    font_family VARCHAR(50) DEFAULT 'Inter',
+    layout_style VARCHAR(20) DEFAULT 'modern',
+    cover_image_url TEXT,
+    show_posts BOOLEAN DEFAULT TRUE,
+    show_events BOOLEAN DEFAULT TRUE,
+    show_reviews BOOLEAN DEFAULT TRUE,
+    is_published BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
