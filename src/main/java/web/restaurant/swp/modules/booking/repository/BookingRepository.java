@@ -18,4 +18,5 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             String branchId, java.util.Collection<String> statuses, java.time.LocalDateTime start, java.time.LocalDateTime end);
     List<Booking> findByEventId(Long eventId);
     List<Booking> findByEventIdIn(List<Long> eventIds);
+    java.util.Optional<Booking> findByOrderCode(Long orderCode);
 }
