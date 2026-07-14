@@ -104,4 +104,8 @@ public class User {
 
     @Column(name = "dietary_notes", length = 1000)
     private String dietaryNotes;
+
+    @Builder.Default
+    @Column(name = "is_password_set", nullable = false, columnDefinition = "boolean default true")
+    private boolean isPasswordSet = true;
 }
