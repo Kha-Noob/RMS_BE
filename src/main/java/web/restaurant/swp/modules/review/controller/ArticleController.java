@@ -24,10 +24,9 @@ public class ArticleController {
 
     private User getCurrentUser() {
         try {
-            Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-            if (principal instanceof UserDetails) {
-                String email = ((UserDetails) principal).getUsername();
-                return userRepository.findByEmail(email).orElse(null);
+            org.springframework.security.core.Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getName())) {
+                return userRepository.findByEmail(auth.getName()).orElse(null);
             }
         } catch (Exception e) {
             // ignore
