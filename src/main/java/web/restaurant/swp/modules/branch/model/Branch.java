@@ -48,6 +48,9 @@ public class Branch {
     private String address;
     private String phone;
 
+    private Double latitude;
+    private Double longitude;
+
     @Builder.Default
     @Column(name = "is_active", nullable = false)
     private boolean isActive = true;
