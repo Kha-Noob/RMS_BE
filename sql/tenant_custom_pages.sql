@@ -1,20 +1,6 @@
-CREATE TABLE tenant_custom_pages (
-    id SERIAL PRIMARY KEY,
-    tenant_id VARCHAR(36) NOT NULL UNIQUE,
-    restaurant_name VARCHAR(255) NOT NULL,
-    description TEXT,
-    style_prompt TEXT,
-    primary_color VARCHAR(10) DEFAULT '#25439b',
-    secondary_color VARCHAR(10) DEFAULT '#3b82f6',
-    background_color VARCHAR(10) DEFAULT '#ffffff',
-    text_color VARCHAR(10) DEFAULT '#0f172a',
-    font_family VARCHAR(50) DEFAULT 'Inter',
-    layout_style VARCHAR(20) DEFAULT 'modern',
-    cover_image_url TEXT,
-    show_posts BOOLEAN DEFAULT TRUE,
-    show_events BOOLEAN DEFAULT TRUE,
-    show_reviews BOOLEAN DEFAULT TRUE,
-    is_published BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
+-- Seed Tenant Custom Pages Data
+INSERT INTO tenant_custom_pages (id, tenant_id, restaurant_name, description, style_prompt, primary_color, secondary_color, background_color, text_color, font_family, layout_style, cover_image_url, show_posts, show_events, show_reviews, is_published) VALUES
+(1, 'tenant-1', 'LiteFlow Restaurant Chain', 'Hệ thống chuỗi nhà hàng ẩm thực Á-Âu cao cấp. Trải nghiệm không gian sang trọng và dịch vụ chuyên nghiệp hàng đầu.', 'Premium luxury dining style', '#b91c1c', '#f59e0b', '#fafafa', '#1f2937', 'Playfair Display', 'luxury', 'https://images.unsplash.com/photo-1514933651103-005eec06c04b?auto=format&fit=crop&q=80&w=1200', true, true, true, true),
+(2, 'tenant-2', 'Nhà hàng Hợp Tác 2 - The Grill House', 'Nơi hội tụ những món nướng độc đáo từ khắp nơi trên thế giới. Nguyên liệu hảo hạng nướng trên than hồng tự nhiên.', 'Cozy grill and steakhouse style', '#065f46', '#10b981', '#f0fdf4', '#064e3b', 'Outfit', 'modern', 'https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&q=80&w=1200', true, true, true, true),
+(3, 'tenant-3', 'Nhà hàng Hợp Tác 3 - Sushi Oasis', 'Tinh hoa ẩm thực Nhật Bản giữa lòng thành phố. Sushi và Sashimi tươi ngon nhập khẩu mỗi ngày.', 'Minimalist Japanese zen style', '#312e81', '#818cf8', '#e0e7ff', '#1e1b4b', 'Plus Jakarta Sans', 'minimalist', 'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?auto=format&fit=crop&q=80&w=1200', true, true, true, true)
+ON CONFLICT (tenant_id) DO NOTHING;
