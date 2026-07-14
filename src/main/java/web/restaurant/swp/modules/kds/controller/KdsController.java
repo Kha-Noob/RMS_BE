@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestBody;
 
 import web.restaurant.swp.config.KdsWebSocketHandler;
 import web.restaurant.swp.modules.auth.model.*;
@@ -77,30 +78,68 @@ public class KdsController {
         }
     }
 
+    public static class KdsStatusRequest {
+        public Long orderId;
+        public Long detailId;
+        public String status;
+    }
+
     @PostMapping("/api/kds/status")
-    public ResponseEntity<?> updateKdsStatus(@RequestParam Long detailId, @RequestParam String status) {
+    public ResponseEntity<?> updateKdsStatus(@RequestBody KdsStatusRequest req) {
         try {
-            OrderDetail detail = orderDetailRepository.findById(detailId)
-                    .orElseThrow(() -> new RuntimeException("Detail not found"));
+            if (req.orderId != null) {
+                Order order = orderRepository.findById(req.orderId)
+                        .orElseThrow(() -> new RuntimeException("Order not found"));
 
-            String entityBranchId = detail.getOrder().getBranchId();
-            BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
-            branchAccessService.validateEntityBranch(entityBranchId, error);
-            if (error.hasError()) return error.toResponse();
+                String entityBranchId = order.getBranchId();
+                BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+                branchAccessService.validateEntityBranch(entityBranchId, error);
+                if (error.hasError()) return error.toResponse();
 
-            detail.setStatus(status);
-            orderDetailRepository.save(detail);
+                order.setStatus(req.status);
+                orderRepository.save(order);
 
-            if ("SERVED".equalsIgnoreCase(status)) {
-                inventoryService.deductStockForOrderDetail(detail);
-            }
+                List<OrderDetail> details = orderDetailRepository.findByOrderId(order.getId());
+                for (OrderDetail detail : details) {
+                    detail.setStatus(req.status);
+                    orderDetailRepository.save(detail);
 
-            if ("READY".equalsIgnoreCase(status)) {
-                KdsWebSocketHandler.broadcast("KDS_READY_ALERT:" + detail.getOrder().getSession().getTable().getName());
+                    if ("SERVED".equalsIgnoreCase(req.status)) {
+                        inventoryService.deductStockForOrderDetail(detail);
+                    }
+                }
+
+                if ("READY".equalsIgnoreCase(req.status)) {
+                    KdsWebSocketHandler.broadcast("KDS_READY_ALERT:" + (order.getSession() != null ? order.getSession().getTable().getName() : "#" + order.getId()));
+                } else {
+                    KdsWebSocketHandler.broadcast("ORDER_STATE_CHANGED");
+                }
+                return ResponseEntity.ok().build();
+            } else if (req.detailId != null) {
+                OrderDetail detail = orderDetailRepository.findById(req.detailId)
+                        .orElseThrow(() -> new RuntimeException("Detail not found"));
+
+                String entityBranchId = detail.getOrder().getBranchId();
+                BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+                branchAccessService.validateEntityBranch(entityBranchId, error);
+                if (error.hasError()) return error.toResponse();
+
+                detail.setStatus(req.status);
+                orderDetailRepository.save(detail);
+
+                if ("SERVED".equalsIgnoreCase(req.status)) {
+                    inventoryService.deductStockForOrderDetail(detail);
+                }
+
+                if ("READY".equalsIgnoreCase(req.status)) {
+                    KdsWebSocketHandler.broadcast("KDS_READY_ALERT:" + detail.getOrder().getSession().getTable().getName());
+                } else {
+                    KdsWebSocketHandler.broadcast("ORDER_STATE_CHANGED");
+                }
+                return ResponseEntity.ok().build();
             } else {
-                KdsWebSocketHandler.broadcast("ORDER_STATE_CHANGED");
+                return ResponseEntity.badRequest().body("Either orderId or detailId must be provided");
             }
-            return ResponseEntity.ok().build();
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
