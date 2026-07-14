@@ -26,7 +26,8 @@ public class AIChatController {
             String responseText = aiChatService.getChatResponse(
                     request.getMessage().trim(),
                     request.getLatitude(),
-                    request.getLongitude()
+                    request.getLongitude(),
+                    request.getTenantId()
             );
             return ResponseEntity.ok(Map.of("response", responseText));
         } catch (Exception e) {
@@ -39,5 +40,6 @@ public class AIChatController {
         private String message;
         private Double latitude;
         private Double longitude;
+        private String tenantId;
     }
 }
