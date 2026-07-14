@@ -42,8 +42,17 @@ public class AIChatService {
     private String apiKey;
 
     public String getChatResponse(String message, Double userLat, Double userLng) {
+        return getChatResponse(message, userLat, userLng, null);
+    }
+
+    public String getChatResponse(String message, Double userLat, Double userLng, String tenantId) {
         // 1. Fetch active branches
-        List<Branch> branches = branchRepository.findAllByIsActiveTrue();
+        List<Branch> branches;
+        if (tenantId != null && !tenantId.trim().isEmpty()) {
+            branches = branchRepository.findByTenantTenantIdAndIsActiveTrue(tenantId);
+        } else {
+            branches = branchRepository.findAllByIsActiveTrue();
+        }
 
         // 2. Fetch all reviews and calculate average ratings
         List<CustomerReview> reviews = customerReviewRepository.findAll();
@@ -51,7 +60,12 @@ public class AIChatService {
                 .collect(Collectors.groupingBy(CustomerReview::getBranchId));
 
         // 3. Fetch menu products and variants
-        List<Product> products = productRepository.findByIsActiveTrue();
+        List<Product> products;
+        if (tenantId != null && !tenantId.trim().isEmpty()) {
+            products = productRepository.findByTenantTenantIdAndIsActiveTrue(tenantId);
+        } else {
+            products = productRepository.findByIsActiveTrue();
+        }
         List<ProductVariant> variants = productVariantRepository.findAll();
         Map<Long, List<ProductVariant>> variantsByProduct = variants.stream()
                 .collect(Collectors.groupingBy(pv -> pv.getProduct().getId()));
