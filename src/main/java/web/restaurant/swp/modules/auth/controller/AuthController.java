@@ -19,6 +19,7 @@ public class AuthController {
 
     private final AuthService authService;
     private final UserRepository userRepository;
+    private final org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
 
     @GetMapping("/me")
     public ResponseEntity<?> getCurrentUser() {
@@ -43,6 +44,10 @@ public class AuthController {
                     response.put("birthday", user.getBirthday());
                     response.put("gender", user.getGender());
                     response.put("dietaryNotes", user.getDietaryNotes());
+                    
+                    // Check if the user password is set or using default Google password
+                    response.put("hasDefaultPassword", !user.isPasswordSet());
+                    
                     return ResponseEntity.ok(response);
                 })
                 .orElse(ResponseEntity.status(401).body(Map.of("error", "User not found")));

@@ -41,6 +41,7 @@ public class DataSeeder implements CommandLineRunner {
 
         List<String> sqlFiles = Arrays.asList(
             "tenants.sql",
+            "tenant_custom_pages.sql",
             "roles.sql",
             "branches.sql",
             "users.sql",
@@ -136,7 +137,7 @@ public class DataSeeder implements CommandLineRunner {
             "user_sessions", "audit_logs", "branch_transfers", "branch_transfer_items", "inventory_logs", 
             "loyalty_transactions", "payroll_runs", "payroll_entries",
             "bookings", "customer_reviews", "posts", "events",
-            "floor_plans", "floor_plan_objects"
+            "floor_plans", "floor_plan_objects", "tenant_custom_pages"
         );
 
         for (String tableName : tablesToReset) {

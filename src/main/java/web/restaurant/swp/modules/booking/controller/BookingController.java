@@ -36,6 +36,7 @@ public class BookingController {
     private final ProductVariantRepository productVariantRepository;
     private final EventRepository eventRepository;
     private final BankSettingRepository bankSettingRepository;
+    private final web.restaurant.swp.util.PayOSHelper payOSHelper;
 
     /**
      * Get all active branches for reservation.
@@ -158,7 +159,40 @@ public class BookingController {
                 }
             }
             booking.setSource("ONLINE");
+            
+            // If payment is required via QR, pre-generate an orderCode for PayOS
+            if (booking.getDepositAmount() != null && booking.getDepositAmount() > 0 && "QR_PAY".equalsIgnoreCase(booking.getPaymentMethod())) {
+                long orderCode = web.restaurant.swp.util.PayOSHelper.generateOrderCode();
+                booking.setOrderCode(orderCode);
+            }
+            
             Booking created = bookingService.createBooking(booking);
+            
+            // If orderCode is present, attempt to create PayOS payment link
+            if (created.getOrderCode() != null) {
+                try {
+                    String returnUrl = "http://localhost:3000/booking?status=success";
+                    String cancelUrl = "http://localhost:3000/booking?status=cancel";
+                    if (created.getEventId() != null) {
+                        returnUrl = "http://localhost:3000/events?status=success";
+                        cancelUrl = "http://localhost:3000/events?status=cancel";
+                    }
+                    
+                    Map<String, Object> payosData = payOSHelper.createPaymentLink(
+                            created.getOrderCode(),
+                            created.getDepositAmount(),
+                            "RMSDC" + created.getId(),
+                            returnUrl,
+                            cancelUrl
+                    );
+                    if (payosData != null && payosData.containsKey("checkoutUrl")) {
+                        created.setCheckoutUrl((String) payosData.get("checkoutUrl"));
+                    }
+                } catch (Exception e) {
+                    log.warn("[PAYOS BOOKING] Could not create PayOS payment link: {}. Falling back to standard QR code.", e.getMessage());
+                }
+            }
+            
             return ResponseEntity.ok(created);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
@@ -204,8 +238,194 @@ public class BookingController {
     @GetMapping("/api/public/bookings/{id}")
     public ResponseEntity<?> getBookingDetails(@PathVariable Long id) {
         return bookingRepository.findById(id)
-                .map(ResponseEntity::ok)
+                .map(b -> {
+                    Map<String, Object> map = new LinkedHashMap<>();
+                    map.put("id", b.getId());
+                    map.put("customerName", b.getCustomerName());
+                    map.put("customerPhone", b.getCustomerPhone());
+                    map.put("customerEmail", b.getCustomerEmail());
+                    map.put("bookingTime", b.getBookingTime());
+                    map.put("guests", b.getGuests());
+                    map.put("status", b.getStatus());
+                    map.put("source", b.getSource());
+                    map.put("depositPaid", b.getDepositPaid());
+                    map.put("branchId", b.getBranchId());
+                    map.put("notes", b.getNotes());
+                    map.put("tableId", b.getTableId());
+                    map.put("tableLabel", b.getTableLabel());
+                    map.put("dietaryNotes", b.getDietaryNotes());
+                    map.put("allergyPeanut", b.getAllergyPeanut());
+                    map.put("allergyGluten", b.getAllergyGluten());
+                    map.put("allergyOthers", b.getAllergyOthers());
+                    map.put("depositAmount", b.getDepositAmount());
+                    map.put("paymentMethod", b.getPaymentMethod());
+                    map.put("paymentStatus", b.getPaymentStatus());
+                    map.put("orderCode", b.getOrderCode());
+                    map.put("durationMinutes", b.getDurationMinutes());
+                    map.put("createdAt", b.getCreatedAt());
+                    map.put("updatedAt", b.getUpdatedAt());
+                    map.put("eventId", b.getEventId());
+
+                    // Enrich Branch Details
+                    branchRepository.findById(b.getBranchId()).ifPresent(branch -> {
+                        map.put("branchName", branch.getName());
+                        map.put("branchAddress", branch.getAddress());
+                    });
+
+                    // Enrich Event details if present
+                    if (b.getEventId() != null) {
+                        eventRepository.findById(b.getEventId()).ifPresent(event -> {
+                            map.put("eventTitle", event.getTitle());
+                            map.put("eventDate", event.getDate());
+                            map.put("eventTime", event.getTime());
+                            map.put("eventLocation", event.getLocation());
+                            map.put("eventDescription", event.getDescription());
+                        });
+                    }
+
+                    return ResponseEntity.ok(map);
+                })
                 .orElse(ResponseEntity.notFound().build());
+    }
+
+    @PutMapping("/api/pos/bookings/{id}/check-in")
+    public ResponseEntity<?> checkInBooking(@PathVariable Long id) {
+        return bookingRepository.findById(id)
+                .map(b -> {
+                    b.setStatus("CHECKED_IN");
+                    b.setUpdatedAt(LocalDateTime.now());
+                    Booking saved = bookingRepository.save(b);
+                    log.info("[CHECK-IN] Booking #{} successfully checked-in by staff", id);
+                    return ResponseEntity.ok(saved);
+                })
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    /**
+     * PUT API to manually confirm payment of a booking (simulates webhook / bank transfer notification).
+     */
+    @PutMapping("/api/public/bookings/{id}/confirm-payment")
+    public ResponseEntity<?> confirmBookingPayment(@PathVariable Long id) {
+        return bookingRepository.findById(id)
+                .map(b -> {
+                    b.setPaymentStatus("PAID");
+                    b.setDepositPaid(true);
+                    Booking saved = bookingRepository.save(b);
+                    log.info("[SIMULATION WEBHOOK] Booking #{} successfully marked as PAID", id);
+                    bookingService.sendBookingConfirmationEmail(saved);
+                    return ResponseEntity.ok(saved);
+                })
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    /**
+     * POST API for banking webhooks (Casso / PayOS style auto-matching simulation).
+     * Automatically parses bank statements and approves matching bookings.
+     */
+    @PostMapping("/api/public/webhook/banking")
+    public ResponseEntity<?> receiveBankingWebhook(@RequestBody Map<String, Object> payload) {
+        log.info("[BANKING WEBHOOK] Received banking transaction notification: {}", payload);
+        try {
+            if (payload.containsKey("data")) {
+                List<Map<String, Object>> transactions = (List<Map<String, Object>>) payload.get("data");
+                for (Map<String, Object> tx : transactions) {
+                    String description = (String) tx.get("description");
+                    Number amountNum = (Number) tx.get("amount");
+                    double amount = amountNum != null ? amountNum.doubleValue() : 0.0;
+                    
+                    if (description != null) {
+                        processBankingTransaction(description, amount);
+                    }
+                }
+            }
+            return ResponseEntity.ok(Map.of("success", true));
+        } catch (Exception e) {
+            log.error("[BANKING WEBHOOK] Error processing banking transaction: ", e);
+            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    private void processBankingTransaction(String memo, double amount) {
+        String memoUpper = memo.toUpperCase();
+        log.info("[BANKING MATCHING] Matching transaction. Memo: '{}', Amount: {}", memo, amount);
+        
+        // 1. Match by Booking ID (e.g. VE29, DC29, VE 29, DC 29, BK29)
+        Long bookingId = extractBookingId(memoUpper);
+        if (bookingId != null) {
+            Optional<Booking> bookingOpt = bookingRepository.findById(bookingId);
+            if (bookingOpt.isPresent()) {
+                Booking b = bookingOpt.get();
+                if ("PENDING".equals(b.getPaymentStatus())) {
+                    b.setPaymentStatus("PAID");
+                    b.setDepositPaid(true);
+                    Booking saved = bookingRepository.save(b);
+                    log.info("[BANKING MATCHING] Auto-matched Booking ID #{} from memo successfully!", bookingId);
+                    bookingService.sendBookingConfirmationEmail(saved);
+                    return;
+                }
+            }
+        }
+        
+        // 2. Match by Phone Number (extract last 9 digits of phone)
+        String phone = extractPhoneNumber(memoUpper);
+        if (phone != null && !phone.isEmpty()) {
+            final String normPhone = phone;
+            List<Booking> pendingBookings = bookingRepository.findAll().stream()
+                    .filter(b -> "PENDING".equals(b.getPaymentStatus()))
+                    .filter(b -> b.getCustomerPhone() != null && b.getCustomerPhone().replaceAll("[^0-9]", "").endsWith(normPhone))
+                    .collect(java.util.stream.Collectors.toList());
+            
+            if (!pendingBookings.isEmpty()) {
+                Booking matched = pendingBookings.get(0);
+                for (Booking b : pendingBookings) {
+                    if (Math.abs(b.getDepositAmount() - amount) < 100) {
+                        matched = b;
+                        break;
+                    }
+                }
+                matched.setPaymentStatus("PAID");
+                matched.setDepositPaid(true);
+                Booking saved = bookingRepository.save(matched);
+                log.info("[BANKING MATCHING] Auto-matched Booking ID #{} via customer phone ending in '{}' successfully!", matched.getId(), normPhone);
+                bookingService.sendBookingConfirmationEmail(saved);
+                return;
+            }
+        }
+        
+        log.warn("[BANKING MATCHING] Could not match transaction memo '{}' with any pending booking.", memo);
+    }
+
+    private Long extractBookingId(String memo) {
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("(VE|DC|BK|ID|MÃ|MA|BOOKING)\\s*(\\d+)");
+        java.util.regex.Matcher matcher = pattern.matcher(memo);
+        if (matcher.find()) {
+            try {
+                return Long.parseLong(matcher.group(2));
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        
+        pattern = java.util.regex.Pattern.compile("#(\\d+)");
+        matcher = pattern.matcher(memo);
+        if (matcher.find()) {
+            try {
+                return Long.parseLong(matcher.group(1));
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private String extractPhoneNumber(String memo) {
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("(0|84|\\+84)\\d{8,10}");
+        java.util.regex.Matcher matcher = pattern.matcher(memo);
+        if (matcher.find()) {
+            String p = matcher.group();
+            return p.length() > 9 ? p.substring(p.length() - 9) : p;
+        }
+        return null;
     }
 
     /**
@@ -217,6 +437,31 @@ public class BookingController {
             @RequestBody Booking booking) {
         try {
             Booking updated = bookingService.updateBooking(id, booking);
+            
+            // If the updated booking requires a deposit and has an orderCode, and isn't paid yet, create the PayOS payment link
+            if (updated.getOrderCode() != null && !Boolean.TRUE.equals(updated.getDepositPaid()) && 
+                "QR_PAY".equalsIgnoreCase(updated.getPaymentMethod())) {
+                try {
+                    String returnUrl = "http://localhost:3000/booking-history?status=success";
+                    String cancelUrl = "http://localhost:3000/booking-history?status=cancel";
+                    
+                    double amount = (updated.getPendingUpdateJson() != null) ? 100000.0 : updated.getDepositAmount();
+                    Map<String, Object> payosData = payOSHelper.createPaymentLink(
+                            updated.getOrderCode(),
+                            amount,
+                            "RMSDC" + updated.getId(),
+                            returnUrl,
+                            cancelUrl
+                    );
+                    if (payosData != null && payosData.containsKey("checkoutUrl")) {
+                        updated.setCheckoutUrl((String) payosData.get("checkoutUrl"));
+                    }
+                } catch (Exception e) {
+                    log.warn("[PAYOS BOOKING UPDATE] Could not create PayOS payment link: {}. Falling back to standard QR code.", e.getMessage());
+                    updated.setCheckoutUrl("http://localhost:3000/booking-history?fallback-pay=true");
+                }
+            }
+            
             return ResponseEntity.ok(updated);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));

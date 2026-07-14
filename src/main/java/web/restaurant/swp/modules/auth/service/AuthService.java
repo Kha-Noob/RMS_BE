@@ -41,6 +41,8 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequiredArgsConstructor
 @Slf4j
 public class AuthService {
+    public static final Map<String, String> googleTempPasscodes = new ConcurrentHashMap<>();
+
     private final UserRepository userRepository;
     private final UserSessionRepository userSessionRepository;
     private final AuditLogRepository auditLogRepository;
@@ -93,10 +95,18 @@ public class AuthService {
         if (userOpt.isEmpty()) {
             logAudit(null, "LOGIN_FAILED_NO_USER", "User", email, 
                 "Attempted login with unregistered email: " + email, ipAddress);
-            throw new RuntimeException("Email hoặc mật khẩu không đúng.");
+            throw new RuntimeException("Email không tồn tại trong hệ thống.");
         }
 
         User user = userOpt.get();
+
+        // Enforce Gmail-only login for CUSTOMER role
+        boolean isCustomer = user.getRoles().stream().anyMatch(r -> "CUSTOMER".equalsIgnoreCase(r.getName()));
+        if (isCustomer && !email.toLowerCase().endsWith("@gmail.com") && !email.toLowerCase().endsWith("@googlemail.com")) {
+            logAudit(user, "LOGIN_FAILED_NOT_GMAIL", "User", user.getId().toString(), 
+                "Customer attempted login with non-Gmail address: " + email, ipAddress);
+            throw new RuntimeException("Tài khoản khách hàng bắt buộc phải sử dụng Gmail.");
+        }
 
         // Check if account is locked
         if (user.getLockExpiration() != null && user.getLockExpiration().isAfter(LocalDateTime.now())) {
@@ -120,7 +130,7 @@ public class AuthService {
                 userRepository.save(user);
                 logAudit(user, "LOGIN_FAILED_WRONG_PASSWORD", "User", user.getId().toString(), 
                     "Wrong password attempt " + attempts + "/5", ipAddress);
-                throw new RuntimeException("Email hoặc mật khẩu không đúng. Lần thử: " + attempts + "/5");
+                throw new RuntimeException("Mật khẩu không chính xác. Lần thử: " + attempts + "/5");
             }
         }
 
@@ -222,6 +232,14 @@ public class AuthService {
         if (userOpt.isEmpty()) {
             throw new RuntimeException("Email không tồn tại trên hệ thống.");
         }
+        User user = userOpt.get();
+        boolean isCustomer = user.getRoles().stream()
+                .anyMatch(role -> "CUSTOMER".equalsIgnoreCase(role.getName()));
+
+        if (!isCustomer) {
+            throw new RuntimeException("Tài khoản nhân viên/quản trị không hỗ trợ tự khôi phục mật khẩu qua Email. Vui lòng liên hệ Quản lý chi nhánh hoặc Chủ chuỗi để được đặt lại mật khẩu!");
+        }
+
         String code = String.format("%06d", new Random().nextInt(1000000));
         forgotPasswordOtpCache.put(email, new OtpDetails(code, LocalDateTime.now().plusMinutes(5)));
         
@@ -239,7 +257,7 @@ public class AuthService {
             log.info("[FORGOT PASSWORD OTP SERVICE] Đã gửi mã OTP thực tế tới email {}", email);
         } catch (Exception e) {
             log.error("Lỗi khi thực hiện gửi email OTP: ", e);
-            throw new RuntimeException("Gửi email thất bại. Vui lòng kiểm tra lại cấu hình mạng hoặc SMTP.");
+            log.info("[FORGOT PASSWORD OTP SERVICE] [FALLBACK LOG] Gửi mã OTP {} tới email {}", code, email);
         }
     }
 
@@ -267,6 +285,7 @@ public class AuthService {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("Người dùng không còn tồn tại."));
         user.setPassword(hashPassword(newPassword));
+        user.setPasswordSet(true);
         userRepository.save(user);
 
         forgotPasswordOtpCache.remove(email);
@@ -313,14 +332,21 @@ public class AuthService {
     public void login(String email, String password) {
         Optional<User> userOpt = userRepository.findByEmail(email);
         if (userOpt.isEmpty()) {
-            throw new RuntimeException("Email hoặc mật khẩu không đúng.");
+            throw new RuntimeException("Email không tồn tại trong hệ thống.");
         }
         User user = userOpt.get();
         if (!user.isActive()) {
             throw new RuntimeException("Tài khoản đang bị khoá.");
         }
+        
+        // Check temporary google passcode first
+        String tempHash = googleTempPasscodes.get(email);
+        if (tempHash != null && checkPassword(password, tempHash)) {
+            return; // Success!
+        }
+
         if (!checkPassword(password, user.getPassword())) {
-            throw new RuntimeException("Email hoặc mật khẩu không đúng.");
+            throw new RuntimeException("Mật khẩu không chính xác.");
         }
     }
 
@@ -357,6 +383,7 @@ public class AuthService {
             throw new RuntimeException("New password not strong enough. Minimum 8 chars, 1 digit, 1 special char.");
         }
         user.setPassword(hashPassword(newPassword));
+        user.setPasswordSet(true);
         userRepository.save(user);
         logAudit(user, "PASSWORD_CHANGE_SUCCESS", "User", user.getId().toString(), "Password changed by user", "127.0.0.1");
     }

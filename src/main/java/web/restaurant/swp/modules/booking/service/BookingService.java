@@ -20,6 +20,12 @@ public class BookingService {
 
     private final BookingRepository bookingRepository;
     private final TableRepository tableRepository;
+    private final org.springframework.mail.javamail.JavaMailSender mailSender;
+    private final web.restaurant.swp.modules.branch.repository.BranchRepository branchRepository;
+    private final web.restaurant.swp.modules.event.repository.EventRepository eventRepository;
+
+    @org.springframework.beans.factory.annotation.Value("${spring.mail.username}")
+    private String senderEmail;
 
     private static final int CLEANING_BUFFER_MINUTES = 15;
 
@@ -64,12 +70,20 @@ public class BookingService {
         if (booking.getCustomerName() == null || booking.getCustomerName().trim().isEmpty()) {
             throw new RuntimeException("Tên khách hàng không được để trống!");
         }
+        if (!booking.getCustomerName().trim().matches("^[\\p{L}\\s']{2,100}$")) {
+            throw new RuntimeException("Tên khách hàng không hợp lệ (chỉ chứa chữ cái, khoảng trắng, từ 2-100 ký tự)!");
+        }
         if (booking.getCustomerPhone() == null || booking.getCustomerPhone().trim().isEmpty()) {
             throw new RuntimeException("Số điện thoại không được để trống!");
         }
-        // Validate phone number format (between 9 to 15 characters, containing numbers/spaces/hyphens/parentheses)
-        if (!booking.getCustomerPhone().matches("^[0-9\\+\\-\\s()]{9,15}$")) {
-            throw new RuntimeException("Số điện thoại không đúng định dạng!");
+        // Validate phone number format (standard Vietnamese phone number)
+        if (!booking.getCustomerPhone().trim().matches("^(0|\\+84)[35789][0-9]{8}$")) {
+            throw new RuntimeException("Số điện thoại không đúng định dạng (phải là số điện thoại Việt Nam hợp lệ)! Ex: 0912345678");
+        }
+        if (booking.getCustomerEmail() != null && !booking.getCustomerEmail().trim().isEmpty()) {
+            if (!booking.getCustomerEmail().trim().matches("^[\\w-\\.]+@([\\w-]+\\.)+[\\w-]{2,4}$")) {
+                throw new RuntimeException("Email không đúng định dạng!");
+            }
         }
         if (booking.getGuests() == null || booking.getGuests() <= 0) {
             throw new RuntimeException("Số lượng khách phải lớn hơn 0!");
@@ -79,6 +93,12 @@ public class BookingService {
         }
         if (booking.getBookingTime() == null) {
             throw new RuntimeException("Thời gian đặt bàn không được để trống!");
+        }
+
+        // Validate Operating Hours (08:00 - 22:00)
+        int hour = booking.getBookingTime().getHour();
+        if (hour < 8 || hour >= 22) {
+            throw new RuntimeException("Giờ đặt bàn phải nằm trong khung giờ hoạt động của nhà hàng (08:00 - 22:00)!");
         }
 
         // 2. Booking Time restriction validation
@@ -191,7 +211,12 @@ public class BookingService {
             }
         }
 
-        return bookingRepository.save(booking);
+        Booking saved = bookingRepository.save(booking);
+        // If it doesn't require QR payment, send the confirmation email immediately!
+        if (saved.getDepositAmount() == null || saved.getDepositAmount() <= 0 || !"QR_PAY".equalsIgnoreCase(saved.getPaymentMethod())) {
+            sendBookingConfirmationEmail(saved);
+        }
+        return saved;
     }
 
     /**
@@ -260,8 +285,6 @@ public class BookingService {
         if (updated.getCustomerName() != null) existing.setCustomerName(updated.getCustomerName());
         if (updated.getCustomerPhone() != null) existing.setCustomerPhone(updated.getCustomerPhone());
         if (updated.getCustomerEmail() != null) existing.setCustomerEmail(updated.getCustomerEmail());
-        if (updated.getBookingTime() != null) existing.setBookingTime(updated.getBookingTime());
-        if (updated.getGuests() != null) existing.setGuests(updated.getGuests());
         if (updated.getNotes() != null) existing.setNotes(updated.getNotes());
         if (updated.getTableId() != null) existing.setTableId(updated.getTableId());
         if (updated.getTableLabel() != null) existing.setTableLabel(updated.getTableLabel());
@@ -270,11 +293,40 @@ public class BookingService {
         existing.setAllergyPeanut(updated.getAllergyPeanut());
         existing.setAllergyGluten(updated.getAllergyGluten());
         if (updated.getAllergyOthers() != null) existing.setAllergyOthers(updated.getAllergyOthers());
-        if (updated.getOrderedItemsJson() != null) existing.setOrderedItemsJson(updated.getOrderedItemsJson());
-        if (updated.getDepositAmount() != null) existing.setDepositAmount(updated.getDepositAmount());
-        if (updated.getPaymentMethod() != null) existing.setPaymentMethod(updated.getPaymentMethod());
-        if (updated.getPaymentStatus() != null) existing.setPaymentStatus(updated.getPaymentStatus());
         if (updated.getStatus() != null) existing.setStatus(updated.getStatus());
+
+        boolean isAddingFood = updated.getOrderedItemsJson() != null && 
+                               !updated.getOrderedItemsJson().trim().isEmpty() && 
+                               !updated.getOrderedItemsJson().equals(existing.getOrderedItemsJson());
+
+        if (isAddingFood) {
+            // Hold the updates in pendingUpdateJson until deposit is paid
+            try {
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                java.util.Map<String, Object> map = new java.util.HashMap<>();
+                map.put("bookingTime", (updated.getBookingTime() != null ? updated.getBookingTime() : existing.getBookingTime()).toString());
+                map.put("guests", updated.getGuests() != null ? updated.getGuests() : existing.getGuests());
+                map.put("orderedItemsJson", updated.getOrderedItemsJson());
+                map.put("depositAmount", 100000.0);
+                existing.setPendingUpdateJson(mapper.writeValueAsString(map));
+            } catch (Exception e) {
+                throw new RuntimeException("Lỗi cấu hình cập nhật món ăn: " + e.getMessage());
+            }
+
+            // Require deposit payment but keep existing active depositAmount unchanged until paid
+            existing.setDepositPaid(false);
+            existing.setPaymentStatus("PENDING");
+            existing.setPaymentMethod("QR_PAY");
+            existing.setOrderCode(web.restaurant.swp.util.PayOSHelper.generateOrderCode());
+        } else {
+            // Standard update - apply directly immediately
+            if (updated.getBookingTime() != null) existing.setBookingTime(updated.getBookingTime());
+            if (updated.getGuests() != null) existing.setGuests(updated.getGuests());
+            if (updated.getOrderedItemsJson() != null) existing.setOrderedItemsJson(updated.getOrderedItemsJson());
+            if (updated.getDepositAmount() != null) existing.setDepositAmount(updated.getDepositAmount());
+            if (updated.getPaymentMethod() != null) existing.setPaymentMethod(updated.getPaymentMethod());
+            if (updated.getPaymentStatus() != null) existing.setPaymentStatus(updated.getPaymentStatus());
+        }
         
         existing.setUpdatedAt(LocalDateTime.now());
         return bookingRepository.save(existing);
@@ -328,5 +380,150 @@ public class BookingService {
         if (title.contains("truffle")) return 20;
         if (title.contains("cocktail") || title.contains("pha chế")) return 25;
         return Integer.MAX_VALUE;
+    }
+
+    public void sendBookingConfirmationEmail(Booking booking) {
+        if (booking.getCustomerEmail() == null || booking.getCustomerEmail().trim().isEmpty()) {
+            log.info("[EMAIL SERVICE] Customer email is empty, skipping confirmation email.");
+            return;
+        }
+
+        String htmlContent = "";
+        try {
+            boolean isEvent = booking.getEventId() != null;
+            String typeName = isEvent ? "VÉ SỰ KIỆN" : "ĐẶT CHỖ NHÀ HÀNG";
+            String subject = "[LiteFlow POS] Xác nhận đặt " + (isEvent ? "vé sự kiện" : "bàn") + " thành công - Mã #" + booking.getId();
+
+            String branchName = "Chi nhánh đã chọn";
+            if (booking.getBranchId() != null) {
+                branchName = branchRepository.findById(booking.getBranchId())
+                        .map(web.restaurant.swp.modules.branch.model.Branch::getName)
+                        .orElse("Chi nhánh đã chọn");
+            }
+
+            String eventTitle = "";
+            String eventInfoHtml = "";
+            if (isEvent) {
+                eventTitle = eventRepository.findById(booking.getEventId())
+                        .map(web.restaurant.swp.modules.event.model.Event::getTitle)
+                        .orElse("Sự kiện đã chọn");
+                eventInfoHtml = "<tr style='border-bottom: 1px solid #f1f5f9;'>" +
+                        "<td style='padding: 10px 0; color: #64748b; font-weight: bold;'>Sự kiện:</td>" +
+                        "<td style='padding: 10px 0; text-align: right; font-weight: bold; color: #1e293b;'>" + eventTitle + "</td>" +
+                        "</tr>";
+            }
+
+            String formattedTime = booking.getBookingTime().toString();
+            try {
+                formattedTime = booking.getBookingTime().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm - dd/MM/yyyy"));
+            } catch (Exception ex) {
+                // fallback
+            }
+
+            StringBuilder qrBuilder = new StringBuilder();
+            qrBuilder.append("=== THÔNG TIN ").append(isEvent ? "VÉ SỰ KIỆN" : "ĐẶT BÀN").append(" ===\n")
+                     .append("Mã đặt: #").append(booking.getId()).append("\n")
+                     .append("Khách hàng: ").append(booking.getCustomerName()).append("\n")
+                     .append("Số điện thoại: ").append(booking.getCustomerPhone()).append("\n")
+                     .append("Thời gian: ").append(formattedTime).append("\n")
+                     .append("Số lượng: ").append(booking.getGuests()).append(isEvent ? " vé" : " người").append("\n")
+                     .append("Chi nhánh: ").append(branchName).append("\n");
+            if (isEvent) {
+                qrBuilder.append("Sự kiện: ").append(eventTitle).append("\n");
+            }
+            if (booking.getTableLabel() != null && !booking.getTableLabel().isEmpty()) {
+                qrBuilder.append("Bàn: ").append(booking.getTableLabel()).append("\n");
+            }
+            if (booking.getDepositAmount() != null && booking.getDepositAmount() > 0) {
+                qrBuilder.append("Tiền cọc: ").append(String.format("%,.0f VNĐ", booking.getDepositAmount())).append(" (").append(booking.getPaymentStatus()).append(")\n");
+            }
+            qrBuilder.append("==========================");
+            String qrText = qrBuilder.toString();
+
+            String qrCodeImgUrl = "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" + 
+                    java.net.URLEncoder.encode(qrText, java.nio.charset.StandardCharsets.UTF_8.toString());
+
+            String depositHtml = "";
+            if (booking.getDepositAmount() != null && booking.getDepositAmount() > 0) {
+                depositHtml = "<tr style='border-bottom: 1px solid #f1f5f9;'>" +
+                        "<td style='padding: 10px 0; color: #64748b; font-weight: bold;'>Tiền cọc:</td>" +
+                        "<td style='padding: 10px 0; text-align: right; font-weight: bold; color: #10b981;'>" + 
+                        String.format("%,.0f VNĐ", booking.getDepositAmount()) + " (" + booking.getPaymentStatus() + ")</td>" +
+                        "</tr>";
+            }
+
+            htmlContent = "<div style='font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 25px; border: 1px solid #e2e8f0; border-radius: 20px; background-color: #ffffff;'>" +
+                    "<div style='text-align: center; margin-bottom: 20px;'>" +
+                    "<h2 style='color: #2563eb; margin: 0; font-size: 20px; font-weight: 800; text-transform: uppercase;'>LITEFLOW RESTAURANT</h2>" +
+                    "<p style='color: #64748b; font-size: 13px; margin: 5px 0 0 0;'>Xác nhận giao dịch thành công</p>" +
+                    "</div>" +
+                    "<div style='background-color: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 16px; padding: 20px; text-align: center; margin-bottom: 25px;'>" +
+                    "<p style='margin: 0 0 10px 0; font-size: 11px; font-weight: 800; color: #64748b; letter-spacing: 1px; text-transform: uppercase;'>MÃ VÉ CHECK-IN CỦA BẠN</p>" +
+                    "<img src='" + qrCodeImgUrl + "' alt='QR Code Check-in' style='width: 170px; height: 170px; border-radius: 12px; border: 1px solid #e2e8f0;' />" +
+                    "<p style='margin: 10px 0 0 0; font-size: 12px; color: #475569; font-weight: 600;'>Đưa mã này cho nhân viên nhà hàng khi đến check-in</p>" +
+                    "</div>" +
+                    "<div style='margin-bottom: 25px;'>" +
+                    "<h3 style='font-size: 13px; color: #475569; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; margin: 0 0 10px 0;'>CHI TIẾT ĐƠN ĐẶT</h3>" +
+                    "<table style='width: 100%; font-size: 13px; border-collapse: collapse;'>" +
+                    "<tr style='border-bottom: 1px solid #f1f5f9;'>" +
+                    "<td style='padding: 10px 0; color: #64748b; font-weight: bold;'>Khách hàng:</td>" +
+                    "<td style='padding: 10px 0; text-align: right; font-weight: bold; color: #1e293b;'>" + booking.getCustomerName() + "</td>" +
+                    "</tr>" +
+                    "<tr style='border-bottom: 1px solid #f1f5f9;'>" +
+                    "<td style='padding: 10px 0; color: #64748b; font-weight: bold;'>Số điện thoại:</td>" +
+                    "<td style='padding: 10px 0; text-align: right; font-weight: bold; color: #1e293b;'>" + booking.getCustomerPhone() + "</td>" +
+                    "</tr>" +
+                    "<tr style='border-bottom: 1px solid #f1f5f9;'>" +
+                    "<td style='padding: 10px 0; color: #64748b; font-weight: bold;'>Thời gian đón:</td>" +
+                    "<td style='padding: 10px 0; text-align: right; font-weight: bold; color: #1e293b;'>" + formattedTime + "</td>" +
+                    "</tr>" +
+                    "<tr style='border-bottom: 1px solid #f1f5f9;'>" +
+                    "<td style='padding: 10px 0; color: #64748b; font-weight: bold;'>Số khách:</td>" +
+                    "<td style='padding: 10px 0; text-align: right; font-weight: bold; color: #1e293b;'>" + booking.getGuests() + " người</td>" +
+                    "</tr>" +
+                    "<tr style='border-bottom: 1px solid #f1f5f9;'>" +
+                    "<td style='padding: 10px 0; color: #64748b; font-weight: bold;'>Chi nhánh:</td>" +
+                    "<td style='padding: 10px 0; text-align: right; font-weight: bold; color: #1e293b;'>" + branchName + "</td>" +
+                    "</tr>" +
+                    eventInfoHtml +
+                    depositHtml +
+                    "</table>" +
+                    "</div>" +
+                    "<div style='font-size: 11px; text-align: center; color: #94a3b8; line-height: 1.6; border-top: 1px solid #f1f5f9; padding-top: 15px;'>" +
+                    "Cảm ơn bạn đã tin tưởng dịch vụ của LiteFlow Restaurant!<br/>" +
+                    "Mọi thắc mắc vui lòng liên hệ hotline 1900 1234 để được trợ giúp." +
+                    "</div>" +
+                    "</div>";
+
+            jakarta.mail.internet.MimeMessage message = mailSender.createMimeMessage();
+            org.springframework.mail.javamail.MimeMessageHelper helper = new org.springframework.mail.javamail.MimeMessageHelper(message, true, "UTF-8");
+            helper.setFrom(senderEmail);
+            helper.setTo(booking.getCustomerEmail());
+            helper.setSubject(subject);
+            helper.setText(htmlContent, true);
+
+            mailSender.send(message);
+            log.info("[EMAIL SERVICE] Successfully sent check-in QR email confirmation to {}", booking.getCustomerEmail());
+        } catch (Exception e) {
+            log.error("[EMAIL SERVICE] Failed to send check-in QR email to {}: {}", booking.getCustomerEmail(), e.getMessage());
+            
+            // Fallback for local sandbox/development where SMTP credentials are not yet set/authorized
+            try {
+                String folderPath = "d:/RMS/emails";
+                java.io.File folder = new java.io.File(folderPath);
+                if (!folder.exists()) {
+                    folder.mkdirs();
+                }
+                String filePath = folderPath + "/booking_" + booking.getId() + ".html";
+                java.nio.file.Files.writeString(
+                    java.nio.file.Paths.get(filePath), 
+                    htmlContent, 
+                    java.nio.charset.StandardCharsets.UTF_8
+                );
+                log.info("[EMAIL SERVICE FALLBACK] Written confirmation email HTML to: {}", filePath);
+            } catch (Exception fileEx) {
+                log.error("[EMAIL SERVICE FALLBACK] Failed to write fallback email file: {}", fileEx.getMessage());
+            }
+        }
     }
 }
