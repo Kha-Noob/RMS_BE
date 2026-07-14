@@ -239,6 +239,65 @@ public class AIChatService {
             return "Tôi chưa có thông tin vị trí của bạn. Bạn vui lòng bật GPS chia sẻ vị trí để tôi tính khoảng cách nhé!";
         }
 
+        // Specific allergen check (placed before booking queries to catch food safety concerns first)
+        if (cleanMsg.contains("dị ứng") || cleanMsg.contains("kiêng") || cleanMsg.contains("không ăn được") || cleanMsg.contains("tránh")) {
+            String allergen = "";
+            if (cleanMsg.contains("hành")) {
+                allergen = "hành";
+            } else if (cleanMsg.contains("tôm")) {
+                allergen = "tôm";
+            } else if (cleanMsg.contains("bò")) {
+                allergen = "bò";
+            } else if (cleanMsg.contains("lạc") || cleanMsg.contains("đậu phộng")) {
+                allergen = "đậu phộng";
+            } else if (cleanMsg.contains("hải sản")) {
+                allergen = "hải sản";
+            } else if (cleanMsg.contains("sữa")) {
+                allergen = "sữa";
+            } else if (cleanMsg.contains("trứng")) {
+                allergen = "trứng";
+            }
+
+            Product targetProduct = null;
+            for (Product p : products) {
+                String pName = p.getName().toLowerCase();
+                if (cleanMsg.contains(pName)) {
+                    targetProduct = p;
+                    break;
+                }
+                String[] keywords = {"bún bò huế", "cơm tấm", "bún chả", "gỏi cuốn", "bánh mì", "phở bò", "phở gà", "lẩu thái", "lẩu riêu", "lẩu nấm", "chân gà", "nem chua", "bánh tráng trộn", "mì ý", "chả cá lã vọng"};
+                for (String kw : keywords) {
+                    if (cleanMsg.contains(kw) && pName.contains(kw)) {
+                        targetProduct = p;
+                        break;
+                    }
+                }
+                if (targetProduct != null) break;
+            }
+
+            if (targetProduct != null && !allergen.isEmpty()) {
+                String ingredients = targetProduct.getIngredients();
+                boolean isDangerous = false;
+                if (ingredients != null) {
+                    String cleanIng = ingredients.toLowerCase();
+                    if (cleanIng.contains(allergen)) {
+                        isDangerous = true;
+                    }
+                }
+                
+                if (isDangerous) {
+                    return String.format("Chào bạn! Đối với món **%s**, trong thành phần có chứa **%s** (chi tiết: %s). Vì bạn bị dị ứng với **%s**, bạn **không nên** dùng món này nhé. Bạn có muốn tham khảo các món ăn khác không?", 
+                            targetProduct.getName(), allergen, ingredients, allergen);
+                } else {
+                    return String.format("Chào bạn! Món **%s** có các thành phần: %s. Món này **không chứa** %s trong danh sách thành phần đã ghi nhận nên bạn có thể yên tâm thưởng thức nhé!", 
+                            targetProduct.getName(), ingredients != null ? ingredients : "Không ghi rõ", allergen);
+                }
+            } else if (targetProduct != null) {
+                return String.format("Món **%s** có các thành phần sau: %s. Bạn vui lòng kiểm tra xem có thành phần nào mình cần tránh không nhé!", 
+                        targetProduct.getName(), targetProduct.getIngredients() != null ? targetProduct.getIngredients() : "Không ghi rõ");
+            }
+        }
+
         // Specific booking link queries (placed first to avoid being intercepted by table check)
         if (cleanMsg.contains("đặt bàn") || cleanMsg.contains("book") || cleanMsg.contains("đăng ký bàn") || cleanMsg.contains("giữ bàn")) {
             Branch targetBranch = null;
