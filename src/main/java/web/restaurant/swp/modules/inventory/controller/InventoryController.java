@@ -110,6 +110,150 @@ public class InventoryController {
         }
     }
 
+    @GetMapping("/api/inventory/recipes")
+    public ResponseEntity<?> getRecipes() {
+        try {
+            List<ProductStock> allStocks = productStockRepository.findAll();
+            Map<ProductVariant, List<ProductStock>> grouped = allStocks.stream()
+                    .collect(java.util.stream.Collectors.groupingBy(ProductStock::getVariant));
+
+            List<Map<String, Object>> result = new ArrayList<>();
+            for (Map.Entry<ProductVariant, List<ProductStock>> entry : grouped.entrySet()) {
+                ProductVariant variant = entry.getKey();
+                List<ProductStock> stocks = entry.getValue();
+
+                Map<String, Object> recipeMap = new HashMap<>();
+                recipeMap.put("id", variant.getId());
+                recipeMap.put("name", variant.getName());
+                recipeMap.put("description", variant.getProduct() != null ? variant.getProduct().getDescription() : "");
+                
+                List<Map<String, Object>> ingredients = new ArrayList<>();
+                for (ProductStock ps : stocks) {
+                    Map<String, Object> ingMap = new HashMap<>();
+                    ingMap.put("id", ps.getId());
+                    ingMap.put("rawMaterialId", ps.getItem().getId());
+                    ingMap.put("rawMaterialName", ps.getItem().getName());
+                    ingMap.put("quantity", ps.getQuantityNeeded());
+                    ingMap.put("unit", ps.getItem().getUnit());
+                    ingredients.add(ingMap);
+                }
+                recipeMap.put("ingredients", ingredients);
+                result.add(recipeMap);
+            }
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @GetMapping("/api/inventory/items")
+    public ResponseEntity<?> getInventoryItems() {
+        try {
+            List<InventoryItem> items = inventoryItemRepository.findAll();
+            List<Map<String, Object>> result = new ArrayList<>();
+            for (InventoryItem item : items) {
+                Map<String, Object> map = new HashMap<>();
+                map.put("id", item.getId());
+                map.put("name", item.getName());
+                map.put("sku", item.getSku());
+                map.put("unit", item.getUnit());
+                map.put("minimumStock", item.getMinimumThreshold());
+                result.add(map);
+            }
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @GetMapping("/api/inventory/categories")
+    public ResponseEntity<?> getCategories() {
+        try {
+            List<Category> categories = categoryRepository.findAll();
+            return ResponseEntity.ok(categories);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @GetMapping("/api/inventory/menu")
+    public ResponseEntity<?> getMenu() {
+        try {
+            List<Product> products = productRepository.findAll();
+            List<ProductVariant> variants = productVariantRepository.findAll();
+            
+            Map<Long, List<ProductVariant>> variantsByProduct = variants.stream()
+                    .filter(v -> v.getProduct() != null)
+                    .collect(java.util.stream.Collectors.groupingBy(v -> v.getProduct().getId()));
+
+            List<Map<String, Object>> result = new ArrayList<>();
+            for (Product p : products) {
+                Map<String, Object> pMap = new HashMap<>();
+                pMap.put("id", p.getId());
+                pMap.put("name", p.getName());
+                pMap.put("description", p.getDescription());
+                pMap.put("isActive", p.isActive());
+                
+                Map<String, Object> catMap = new HashMap<>();
+                if (p.getCategory() != null) {
+                    catMap.put("id", p.getCategory().getId());
+                    catMap.put("name", p.getCategory().getName());
+                } else {
+                    catMap.put("id", null);
+                    catMap.put("name", null);
+                }
+                pMap.put("category", catMap);
+
+                List<ProductVariant> pVariants = variantsByProduct.getOrDefault(p.getId(), List.of());
+                List<Map<String, Object>> vList = new ArrayList<>();
+                double defaultPrice = 0.0;
+                if (!pVariants.isEmpty()) {
+                    defaultPrice = pVariants.get(0).getPrice();
+                }
+                for (ProductVariant pv : pVariants) {
+                    Map<String, Object> vMap = new HashMap<>();
+                    vMap.put("id", pv.getId());
+                    vMap.put("name", pv.getName());
+                    vMap.put("price", pv.getPrice());
+                    vList.add(vMap);
+                }
+                pMap.put("variants", vList);
+                pMap.put("price", defaultPrice);
+                
+                result.add(pMap);
+            }
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @GetMapping("/api/inventory/transfer")
+    public ResponseEntity<?> getTransfers() {
+        try {
+            BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+            String branchId = branchAccessService.validateAndGetBranchId(null, error);
+            if (error.hasError()) return error.toResponse();
+
+            List<BranchTransfer> transfers = branchTransferRepository.findAll();
+            List<Map<String, Object>> result = new ArrayList<>();
+            for (BranchTransfer t : transfers) {
+                if (t.getSourceBranch().getBranchId().equals(branchId) || t.getTargetBranch().getBranchId().equals(branchId)) {
+                    Map<String, Object> map = new HashMap<>();
+                    map.put("id", t.getId());
+                    map.put("fromBranch", t.getSourceBranch().getName());
+                    map.put("toBranch", t.getTargetBranch().getName());
+                    map.put("status", t.getStatus());
+                    map.put("createdAt", t.getRequestDate());
+                    result.add(map);
+                }
+            }
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
     @PostMapping("/api/inventory/adjust")
     public ResponseEntity<?> adjustStock(@RequestBody AdjustStockRequest request) {
         try {

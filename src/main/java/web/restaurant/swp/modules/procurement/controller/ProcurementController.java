@@ -35,6 +35,7 @@ import web.restaurant.swp.modules.branch.service.BranchAccessService;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.http.ResponseEntity;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -58,6 +59,20 @@ public class ProcurementController {
     private String validatePoBranch(PurchaseOrder po, BranchAccessService.ErrorHolder error) {
         String entityBranchId = po.getBranch() != null ? po.getBranch().getBranchId() : null;
         return branchAccessService.validateEntityBranch(entityBranchId, error);
+    }
+
+    @GetMapping("/api/procurement/po")
+    public ResponseEntity<?> getPurchaseOrders(@RequestParam(required = false) String branchId) {
+        try {
+            BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+            String activeBranchId = branchAccessService.validateAndGetBranchId(branchId, error);
+            if (error.hasError()) return error.toResponse();
+
+            List<PurchaseOrder> pos = purchaseOrderRepository.findByBranchBranchId(activeBranchId);
+            return ResponseEntity.ok(pos);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
 
     @GetMapping("/api/procurement/po/details/{poId}")

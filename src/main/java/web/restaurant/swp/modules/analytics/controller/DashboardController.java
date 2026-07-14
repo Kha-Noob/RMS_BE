@@ -38,11 +38,12 @@ public class DashboardController {
 
     @GetMapping("/api/dashboard/summary")
     public ResponseEntity<?> getDashboardSummary(
+            @RequestParam(name = "branchId", required = false) String branchIdParam,
             @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate) {
         try {
             BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
-            String branchId = branchAccessService.validateAndGetBranchId(null, error);
+            String branchId = branchAccessService.validateAndGetBranchId(branchIdParam, error);
             if (error.hasError()) return error.toResponse();
 
             LocalDate today = LocalDate.now();
