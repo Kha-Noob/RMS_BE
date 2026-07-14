@@ -8,6 +8,7 @@ import web.restaurant.swp.modules.review.service.AIReviewAgent;
 
 import java.time.LocalDateTime;
 import java.util.Map;
+import web.restaurant.swp.modules.review.service.ProfanityFilterService;
 
 @RestController
 @RequestMapping("/api/public/reviews")
@@ -16,6 +17,7 @@ import java.util.Map;
 public class AIReviewController {
 
     private final AIReviewAgent aiReviewAgent;
+    private final ProfanityFilterService profanityFilterService;
 
     @PostMapping("/submit")
     public ResponseEntity<?> submitReview(@RequestBody Map<String, Object> payload) {
@@ -37,6 +39,10 @@ public class AIReviewController {
             }
             if (branchId == null || branchId.trim().isEmpty()) {
                 return ResponseEntity.badRequest().body(Map.of("message", "Chi nhánh không hợp lệ."));
+            }
+
+            if (profanityFilterService.hasProfanity(comment)) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Nội dung đánh giá chứa từ ngữ không phù hợp."));
             }
 
             CustomerReview review = CustomerReview.builder()

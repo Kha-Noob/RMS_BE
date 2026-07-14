@@ -15,11 +15,16 @@ import java.util.Map;
 public class AIChatController {
 
     private final AIChatService aiChatService;
+    private final web.restaurant.swp.modules.review.service.ProfanityFilterService profanityFilterService;
 
     @PostMapping("/chat")
     public ResponseEntity<?> chat(@RequestBody ChatRequest request) {
         if (request.getMessage() == null || request.getMessage().trim().isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("message", "Vui lòng nhập tin nhắn."));
+        }
+
+        if (profanityFilterService.hasProfanity(request.getMessage())) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Tin nhắn chứa từ ngữ không phù hợp."));
         }
 
         try {

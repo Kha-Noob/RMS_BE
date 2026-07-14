@@ -25,6 +25,7 @@ public class ReviewFeedController {
     private final ReviewFeedService reviewFeedService;
     private final UserRepository userRepository;
     private final S3Service s3Service;
+    private final web.restaurant.swp.modules.review.service.ProfanityFilterService profanityFilterService;
 
     @PostMapping("/public/feed/upload")
     public ResponseEntity<?> uploadFile(@RequestParam("file") MultipartFile file) {
@@ -73,6 +74,10 @@ public class ReviewFeedController {
     // 1. Create post
     @PostMapping("/public/feed/posts")
     public ResponseEntity<?> createPost(@RequestBody CreatePostRequest req) {
+        if (profanityFilterService.hasProfanity(req.content)) {
+            return ResponseEntity.badRequest().body("Nội dung bài viết chứa từ ngữ không phù hợp.");
+        }
+
         User user = getCurrentUser();
         
         Post post = Post.builder()
@@ -138,6 +143,10 @@ public class ReviewFeedController {
     public ResponseEntity<?> addComment(
             @PathVariable Long id,
             @RequestBody CommentRequest req) {
+        if (profanityFilterService.hasProfanity(req.content)) {
+            return ResponseEntity.badRequest().body("Nội dung bình luận chứa từ ngữ không phù hợp.");
+        }
+
         User user = getCurrentUser();
         String name = (user != null) ? user.getName() : req.authorName;
         String phone = (user != null) ? user.getPhone() : req.authorPhone;
