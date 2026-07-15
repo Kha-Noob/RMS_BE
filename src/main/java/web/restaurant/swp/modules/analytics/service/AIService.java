@@ -37,6 +37,8 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.List;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 
 @Service
 @RequiredArgsConstructor
@@ -86,23 +88,26 @@ public class AIService {
                         + "}";
 
 
-                HttpClient client = HttpClient.newHttpClient();
+                HttpClient client = HttpClient.newBuilder()
+                        .version(HttpClient.Version.HTTP_1_1)
+                        .connectTimeout(java.time.Duration.ofSeconds(15))
+                        .build();
                 HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + apiKey))
+                        .uri(URI.create("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + apiKey))
+                        .timeout(java.time.Duration.ofSeconds(30))
                         .header("Content-Type", "application/json")
                         .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                         .build();
 
                 HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
                 if (response.statusCode() == 200) {
-                    // Extract response content
                     String body = response.body();
-                    int textStart = body.indexOf("\"text\": \"") + 9;
-                    int textEnd = body.indexOf("\"", textStart);
-                    if (textStart > 8 && textEnd > textStart) {
-                        return body.substring(textStart, textEnd).replace("\\n", "\n").replace("\\\"", "\"");
+                    try {
+                        JsonNode root = new ObjectMapper().readTree(body);
+                        return root.path("candidates").path(0).path("content").path("parts").path(0).path("text").asText();
+                    } catch (Exception parseEx) {
+                        log.error("Failed to parse Gemini response via Jackson", parseEx);
                     }
-
                 }
             } catch (Exception e) {
                 log.error("Error calling OpenAI API, falling back to local analysis", e);
@@ -127,5 +132,110 @@ public class AIService {
             sb.append("  - **").append(b.getItem().getName()).append("**: ").append(b.getQuantity()).append(" / ").append(b.getReorderPoint()).append(" ").append(b.getItem().getUnit()).append(" (Đã chạm ngưỡng tối thiểu)\n");
         }
         return sb.toString();
+    }
+
+    public String checkAllergens(List<Product> products, String allergenQuery) {
+        StringBuilder menuContext = new StringBuilder();
+        menuContext.append("Danh sách thực đơn và thành phần món ăn:\n");
+        for (Product p : products) {
+            menuContext.append("- ID: ").append(p.getId())
+                       .append(" | Tên món: ").append(p.getName())
+                       .append(" | Thành phần: ").append(p.getIngredients() != null ? p.getIngredients() : "Không ghi rõ")
+                       .append(" | Mô tả: ").append(p.getDescription() != null ? p.getDescription() : "")
+                       .append("\n");
+        }
+
+        String prompt = "Bạn là Trợ lý AI Bảo vệ Khách hàng khỏi Dị ứng Thực phẩm của nhà hàng. "
+                + "Khách hàng thông báo họ bị dị ứng hoặc muốn tránh các thành phần sau: \"" + allergenQuery + "\".\\n"
+                + "Hãy phân tích danh sách thực đơn dưới đây và trả về kết quả định dạng JSON với cấu trúc chính xác như sau (không kèm mã markdown hay từ khóa khác, chỉ trả về chuỗi JSON thô hợp lệ):\\n"
+                + "{\\n"
+                + "  \\\"allergenQuery\\\": \\\"" + allergenQuery.replace("\"", "\\\"") + "\\\",\\n"
+                + "  \\\"dishes\\\": [\\n"
+                + "    {\\n"
+                + "      \\\"productId\\\": 1,\\n"
+                + "      \\\"productName\\\": \\\"Tên món ăn\\\",\\n"
+                + "      \\\"status\\\": \\\"SAFE\\\" hoặc \\\"WARNING\\\",\\n"
+                + "      \\\"reason\\\": \\\"Giải thích chi tiết tại sao an toàn hoặc cảnh báo lây nhiễm chéo/thành phần gây dị ứng\\\",\\n"
+                + "      \\\"suggestedSubstitute\\\": \\\"Tên món ăn thay thế an toàn nếu có, hoặc để trống\\\"\\n"
+                + "    }\\n"
+                + "  ]\\n"
+                + "}\\n\\n"
+                + menuContext.toString();
+
+        if (apiKey != null && !apiKey.trim().isEmpty()) {
+            try {
+                String requestBody = "{"
+                        + "\"contents\": [{"
+                        + "\"parts\": [{"
+                        + "\"text\": \"" + prompt.replace("\n", "\\n").replace("\"", "\\\"") + "\""
+                        + "}]"
+                        + "}]"
+                        + "}";
+
+                HttpClient client = HttpClient.newBuilder()
+                        .version(HttpClient.Version.HTTP_1_1)
+                        .connectTimeout(java.time.Duration.ofSeconds(15))
+                        .build();
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + apiKey))
+                        .timeout(java.time.Duration.ofSeconds(30))
+                        .header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                        .build();
+
+                HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+                if (response.statusCode() == 200) {
+                    String body = response.body();
+                    try {
+                        JsonNode root = new ObjectMapper().readTree(body);
+                        String rawText = root.path("candidates").path(0).path("content").path("parts").path(0).path("text").asText();
+                        String jsonResponse = rawText;
+                        if (jsonResponse.contains("```json")) {
+                            jsonResponse = jsonResponse.substring(jsonResponse.indexOf("```json") + 7);
+                            if (jsonResponse.contains("```")) {
+                                jsonResponse = jsonResponse.substring(0, jsonResponse.indexOf("```"));
+                            }
+                        } else if (jsonResponse.contains("```")) {
+                            jsonResponse = jsonResponse.substring(jsonResponse.indexOf("```") + 3);
+                            if (jsonResponse.contains("```")) {
+                                jsonResponse = jsonResponse.substring(0, jsonResponse.indexOf("```"));
+                            }
+                        }
+                        return jsonResponse.trim();
+                    } catch (Exception parseEx) {
+                        log.error("Failed to parse Gemini response via Jackson", parseEx);
+                    }
+                }
+            } catch (Exception e) {
+                log.error("Error calling Gemini API for allergen check", e);
+            }
+        }
+
+        StringBuilder fallback = new StringBuilder();
+        fallback.append("{\n");
+        fallback.append("  \"allergenQuery\": \"").append(allergenQuery).append("\",\n");
+        fallback.append("  \"dishes\": [\n");
+        for (int i = 0; i < products.size(); i++) {
+            Product p = products.get(i);
+            boolean hasAllergen = false;
+            String reason = "Món ăn an toàn, không chứa thành phần dị ứng.";
+            if (p.getIngredients() != null && p.getIngredients().toLowerCase().contains(allergenQuery.toLowerCase())) {
+                hasAllergen = true;
+                reason = "Phát hiện thành phần dị ứng \"" + allergenQuery + "\" trong mô tả nguyên liệu.";
+            } else if (p.getDescription() != null && p.getDescription().toLowerCase().contains(allergenQuery.toLowerCase())) {
+                hasAllergen = true;
+                reason = "Mô tả món ăn có đề cập đến \"" + allergenQuery + "\".";
+            }
+            fallback.append("    {\n")
+                    .append("      \"productId\": ").append(p.getId()).append(",\n")
+                    .append("      \"productName\": \"").append(p.getName()).append("\",\n")
+                    .append("      \"status\": \"").append(hasAllergen ? "WARNING" : "SAFE").append("\",\n")
+                    .append("      \"reason\": \"").append(reason).append("\",\n")
+                    .append("      \"suggestedSubstitute\": \"\"\n")
+                    .append("    }").append(i < products.size() - 1 ? ",\n" : "\n");
+        }
+        fallback.append("  ]\n");
+        fallback.append("}");
+        return fallback.toString();
     }
 }

@@ -8,4 +8,15 @@ import java.util.List;
 @Repository
 public interface BookingRepository extends JpaRepository<Booking, Long> {
     List<Booking> findByBranchIdAndBookingTimeBetween(String branchId, java.time.LocalDateTime start, java.time.LocalDateTime end);
+    List<Booking> findByBranchIdAndStatusNotAndBookingTimeBetween(
+            String branchId, String status, java.time.LocalDateTime start, java.time.LocalDateTime end);
+    List<Booking> findByCustomerPhoneOrderByBookingTimeDesc(String phone);
+    List<Booking> findByCustomerEmailOrderByBookingTimeDesc(String email);
+    List<Booking> findByCustomerPhoneAndStatusInAndBookingTimeBetween(
+            String phone, java.util.Collection<String> statuses, java.time.LocalDateTime start, java.time.LocalDateTime end);
+    List<Booking> findByBranchIdAndStatusNotInAndBookingTimeBetween(
+            String branchId, java.util.Collection<String> statuses, java.time.LocalDateTime start, java.time.LocalDateTime end);
+    List<Booking> findByEventId(Long eventId);
+    List<Booking> findByEventIdIn(List<Long> eventIds);
+    java.util.Optional<Booking> findByOrderCode(Long orderCode);
 }

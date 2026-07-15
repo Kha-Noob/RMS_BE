@@ -50,6 +50,7 @@ public class InventoryItem {
     @Column(nullable = false)
     private String unit; // e.g. kg, lít, quả
 
+    @Builder.Default
     @Column(name = "minimum_threshold", nullable = false)
     private Double minimumThreshold = 0.0;
 

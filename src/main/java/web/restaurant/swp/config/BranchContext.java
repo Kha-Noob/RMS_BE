@@ -21,7 +21,7 @@ public class BranchContext {
 
     public static boolean canSwitchBranch(User user) {
         if (user == null) return false;
-        return user.getRoles().stream().anyMatch(r -> "ADMIN".equals(r.getName()));
+        return user.getRoles().stream().anyMatch(r -> "ADMIN".equals(r.getName()) || "COOPERATOR".equals(r.getName()));
     }
 
     public static String getActiveBranchId(User user) {

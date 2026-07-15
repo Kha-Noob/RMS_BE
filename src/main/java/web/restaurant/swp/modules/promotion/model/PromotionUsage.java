@@ -53,9 +53,11 @@ public class PromotionUsage {
     @JoinColumn(name = "customer_id")
     private Customer customer;
 
+    @Builder.Default
     @Column(name = "discount_applied", nullable = false)
     private Double discountApplied = 0.0;
 
+    @Builder.Default
     @Column(name = "used_date", nullable = false)
     private LocalDateTime usedDate = LocalDateTime.now();
 }

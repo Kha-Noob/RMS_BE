@@ -48,15 +48,19 @@ public class PayrollEntry {
     @JoinColumn(name = "employee_id", nullable = false)
     private Employee employee;
 
+    @Builder.Default
     @Column(name = "base_pay", nullable = false)
     private Double basePay = 0.0;
 
+    @Builder.Default
     @Column(name = "allowances", nullable = false)
     private Double allowances = 0.0;
 
+    @Builder.Default
     @Column(name = "deductions", nullable = false)
     private Double deductions = 0.0;
 
+    @Builder.Default
     @Column(name = "net_pay", nullable = false)
     private Double netPay = 0.0;
 }

@@ -45,18 +45,22 @@ public class Order {
     @JoinColumn(name = "session_id", nullable = false)
     private TableSession session;
 
+    @Builder.Default
     @Column(name = "order_date", nullable = false)
     private LocalDateTime orderDate = LocalDateTime.now();
 
+    @Builder.Default
     @Column(nullable = false)
     private String status = "PENDING"; // PENDING, COOKING, READY, SERVED, CANCELLED
 
+    @Builder.Default
     @Column(name = "total_amount", nullable = false)
     private Double totalAmount = 0.0;
 
     @Column(name = "branch_id", length = 36, nullable = false)
     private String branchId;
 
+    @Builder.Default
     @Column(nullable = false)
     private String source = "OFFLINE"; // ONLINE, OFFLINE
 }

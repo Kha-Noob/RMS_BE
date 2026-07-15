@@ -1,0 +1,13 @@
+-- Posts SQL data
+INSERT INTO posts (id, author_name, author_phone, content, rating, table_check_in, branch_id, likes_count, report_count, status, created_at, is_edited, view_count) VALUES
+(1, 'Lê Minh Anh', '0912345656', 'Món sườn nướng BBQ ở đây mềm ngọt, sốt ướp đậm đà cực kỳ đưa miệng! Không gian vườn bia ngoài trời rất chill, mát mẻ.', 5, 'Vườn bia - Bàn 04', '01-2thang9', 15, 0, 'PUBLIC', '2026-06-25 18:30:00', false, 120),
+(2, 'Phạm Hoàng Nam', '0912345657', 'Học làm sushi với Bếp trưởng Nhật Bản siêu vui và bổ ích. Cá hồi tươi rói, cơm Shari chuẩn vị. Rất đáng trải nghiệm!', 5, 'Lầu 1 - Bàn Sushi', '21-HaiPhong', 24, 0, 'PUBLIC', '2026-06-26 10:15:00', false, 85),
+(3, 'Nguyễn Khánh Vy', '0912345658', 'Không gian đêm nhạc Acoustic kết hợp thử rượu vang rất sang trọng và lãng mạn. View hoàng hôn từ tầng 25 tuyệt đẹp!', 5, 'Skyline Lounge - Bàn 12', '11-NguyenHuuTho', 32, 0, 'PUBLIC', '2026-06-27 20:00:00', false, 210),
+(4, 'Trần Quốc Bảo', '0912345659', 'Hải sản ở RMS Premium Catering tươi ngon hết nấc. Điểm 10 cho chất lượng phục vụ chu đáo, nhiệt tình.', 5, 'Lầu 2 - Bàn 08', '01-2thang9', 8, 0, 'PUBLIC', '2026-06-28 12:30:00', false, 45),
+(5, 'Vũ Gia Linh', '0912345660', 'Món mì tươi làm tay kết hợp Truffle bào mỏng thực sự là một kiệt tác ẩm thực! Hương thơm nồng nàn quyến rũ khó quên.', 5, 'Phòng VIP - Bàn Hoàng Gia', '11-NguyenHuuTho', 42, 0, 'PUBLIC', '2026-06-28 19:45:00', false, 165),
+(6, 'Phan Minh Khang', '0912345661', 'Không gian sang trọng, đồ ăn ngon nhưng phục vụ hơi chậm vào giờ cao điểm. Sẽ quay lại vì hương vị món ăn.', 4, 'Lầu 1 - Bàn 02', '21-HaiPhong', 5, 0, 'PUBLIC', '2026-06-28 20:15:00', false, 32),
+(7, 'Đỗ Thanh Trúc', '0912345662', 'Đêm tiệc Truffle tuyệt vời nhất tôi từng tham dự. Sự kết hợp khéo léo giữa ẩm thực tinh tế và rượu vang hảo hạng Ý.', 5, 'Phòng VIP - Bàn Hoàng Gia', '11-NguyenHuuTho', 18, 0, 'PUBLIC', '2026-06-28 21:00:00', false, 95),
+(8, 'Bùi Đức Thắng', '0912345663', 'Bia thủ công ở đây rất đa dạng hương vị, từ đắng đậm đến ngọt nhẹ thơm mùi hoa quả. Mồi nhắm BBQ sườn tảng khổng lồ cực chất.', 5, 'Vườn bia - Bàn 09', '01-2thang9', 11, 0, 'PUBLIC', '2026-06-28 22:30:00', false, 72),
+(9, 'Ngô Mai Chi', '0912345664', 'Workshop cocktails siêu vui, học được nhiều kiến thức hay ho về shaker và các loại rượu nền. Tự pha được 3 ly ngon xỉu!', 5, 'Skyline Bar - Bàn Cocktail', '21-HaiPhong', 14, 0, 'PUBLIC', '2026-06-29 08:30:00', false, 58),
+(10, 'Dương Minh Quân', '0912345665', 'Thịt bò Mỹ hun khói bằng gỗ sồi mềm tan trong miệng, hương khói thơm nồng đượm. Rất hợp uống cùng bia IPA lạnh.', 5, 'Vườn bia - Bàn 02', '01-2thang9', 20, 0, 'PUBLIC', '2026-06-29 09:15:00', false, 88)
+ON CONFLICT (id) DO NOTHING;

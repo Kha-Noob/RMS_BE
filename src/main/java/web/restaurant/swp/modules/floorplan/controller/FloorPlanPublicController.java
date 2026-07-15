@@ -17,6 +17,10 @@ public class FloorPlanPublicController {
     private final FloorPlanService floorPlanService;
     private final FloorPlanObjectRepository floorPlanObjectRepository;
 
+    /**
+     * Public endpoint: get published floor plans for a branch.
+     * No auth required - used by customer-facing pages.
+     */
     @GetMapping("/api/public/branches/{branchId}/floor-plans")
     public ResponseEntity<?> listPublishedFloorPlans(@PathVariable String branchId) {
         try {
@@ -27,10 +31,16 @@ public class FloorPlanPublicController {
         }
     }
 
+    /**
+     * Public endpoint: get a published floor plan with all objects.
+     * Only returns published floor plans.
+     */
     @GetMapping("/api/public/floor-plans/{id}")
     public ResponseEntity<?> getPublishedFloorPlan(@PathVariable Long id) {
         try {
-            FloorPlan plan = floorPlanService.getFloorPlan(id);
+            FloorPlan plan = floorPlanService.getFloorPlanWithObjects(id);
+
+            // Only allow viewing published floor plans via public API
             if (!"published".equals(plan.getStatus())) {
                 return ResponseEntity.status(404).body(Map.of("error", "Floor plan not found or not published"));
             }

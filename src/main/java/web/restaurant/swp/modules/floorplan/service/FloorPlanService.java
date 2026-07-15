@@ -58,10 +58,31 @@ public class FloorPlanService {
                 .orElseThrow(() -> new RuntimeException("Floor plan not found: " + id));
     }
 
+    public FloorPlan getFloorPlanWithObjects(Long id) {
+        FloorPlan plan = getFloorPlan(id);
+        plan.getFloorPlanObjects().size();
+        return plan;
+    }
+
     @Transactional
     public FloorPlan createFloorPlan(String branchId, String name, Integer floorNumber,
-                                      Integer width, Integer height, String backgroundMode, User creator) {
-        throw new IllegalArgumentException("Room/area is required when creating a floor plan");
+                                      Integer width, Integer height, User creator) {
+        Branch branch = branchRepository.findById(branchId)
+                .orElseThrow(() -> new RuntimeException("Branch not found: " + branchId));
+
+        FloorPlan plan = FloorPlan.builder()
+                .branch(branch)
+                .name(name)
+                .floorNumber(floorNumber != null ? floorNumber : 1)
+                .width(width != null ? width : 1200)
+                .height(height != null ? height : 800)
+                .status("draft")
+                .isTableSelectionEnabled(false)
+                .createdBy(creator)
+                .updatedBy(creator)
+                .build();
+
+        return floorPlanRepository.save(plan);
     }
 
     @Transactional
@@ -127,6 +148,7 @@ public class FloorPlanService {
         if (updates.containsKey("panoramaUrl")) plan.setPanoramaUrl((String) updates.get("panoramaUrl"));
         if (updates.containsKey("panoramaKey")) plan.setPanoramaKey((String) updates.get("panoramaKey"));
         if (updates.containsKey("panoramaType")) plan.setPanoramaType((String) updates.get("panoramaType"));
+        if (updates.containsKey("isTableSelectionEnabled")) plan.setIsTableSelectionEnabled((Boolean) updates.get("isTableSelectionEnabled"));
         plan.setUpdatedBy(updater);
 
         return floorPlanRepository.save(plan);
@@ -135,6 +157,9 @@ public class FloorPlanService {
     @Transactional
     public void deleteFloorPlan(Long id) {
         FloorPlan plan = getFloorPlan(id);
+        if (!"draft".equals(plan.getStatus())) {
+            throw new RuntimeException("Only draft floor plans can be deleted");
+        }
         floorPlanObjectRepository.deleteByFloorPlan_Id(id);
         floorPlanRepository.delete(plan);
     }
@@ -176,26 +201,21 @@ public class FloorPlanService {
         return floorPlanRepository.save(plan);
     }
 
-    private Double toDouble(Object value) {
-        if (value == null) return null;
-        if (value instanceof Number number) return number.doubleValue();
-        return Double.parseDouble(value.toString());
+    @Transactional
+    public FloorPlan updateBackgroundImage(Long id, String imageUrl, User updater) {
+        FloorPlan plan = getFloorPlan(id);
+        plan.setBackgroundMode("CUSTOM_IMAGE");
+        plan.setUpdatedBy(updater);
+        return floorPlanRepository.save(plan);
     }
 
-    private Long toLong(Object value) {
-        if (value == null) return null;
-        if (value instanceof Number number) return number.longValue();
-        return Long.parseLong(value.toString());
-    }
-
-    private void resetFloorDiagramTransform(FloorPlan plan) {
-        plan.setFloorDiagramFitMode("contain");
-        plan.setFloorDiagramX(0.0);
-        plan.setFloorDiagramY(0.0);
-        plan.setFloorDiagramWidth(100.0);
-        plan.setFloorDiagramHeight(100.0);
-        plan.setFloorDiagramScale(1.0);
-        plan.setFloorDiagramRotation(0.0);
+    @Transactional
+    public FloorPlan update360Image(Long id, String imageUrl, User updater) {
+        FloorPlan plan = getFloorPlan(id);
+        plan.setPanoramaUrl(imageUrl);
+        plan.setPanoramaType("IMAGE_360");
+        plan.setUpdatedBy(updater);
+        return floorPlanRepository.save(plan);
     }
 
     @Transactional
@@ -291,11 +311,9 @@ public class FloorPlanService {
     public List<FloorPlanObject> bulkSaveObjects(Long floorPlanId, List<Map<String, Object>> objectsData) {
         FloorPlan plan = getFloorPlan(floorPlanId);
 
-        // Delete existing objects
         floorPlanObjectRepository.deleteByFloorPlan_Id(floorPlanId);
         floorPlanRepository.flush();
 
-        // Create new objects
         List<FloorPlanObject> saved = new ArrayList<>();
         for (Map<String, Object> data : objectsData) {
             Map<String, Object> metadataJson = objectMetadata(data);
@@ -322,6 +340,39 @@ public class FloorPlanService {
 
         log.info("Bulk saved {} objects for floor plan {}", saved.size(), floorPlanId);
         return saved;
+    }
+
+    @Transactional
+    public List<FloorPlanObject> bulkUpdateObjects(Long floorPlanId, List<Map<String, Object>> objectDataList) {
+        FloorPlan plan = getFloorPlan(floorPlanId);
+
+        floorPlanObjectRepository.deleteByFloorPlan_Id(floorPlanId);
+        floorPlanRepository.flush();
+
+        List<FloorPlanObject> savedObjects = new ArrayList<>();
+        for (Map<String, Object> data : objectDataList) {
+            Map<String, Object> metadataJson = objectMetadata(data);
+            FloorPlanObject obj = FloorPlanObject.builder()
+                    .floorPlan(plan)
+                    .tableId(extractTableId(metadataJson))
+                    .objectType((String) data.get("objectType"))
+                    .label((String) data.get("label"))
+                    .x(data.get("x") != null ? ((Number) data.get("x")).doubleValue() : 0.0)
+                    .y(data.get("y") != null ? ((Number) data.get("y")).doubleValue() : 0.0)
+                    .width(data.get("width") != null ? ((Number) data.get("width")).doubleValue() : 80.0)
+                    .height(data.get("height") != null ? ((Number) data.get("height")).doubleValue() : 80.0)
+                    .rotation(data.get("rotation") != null ? ((Number) data.get("rotation")).doubleValue() : 0.0)
+                    .shape((String) data.get("shape"))
+                    .zIndex(data.get("zIndex") != null ? ((Number) data.get("zIndex")).intValue() : 0)
+                    .styleJson(toJsonMap(data.get("styleJson")))
+                    .metadataJson(metadataJson)
+                    .build();
+
+            savedObjects.add(floorPlanObjectRepository.save(obj));
+        }
+
+        log.info("Bulk updated {} objects for floor plan {}", savedObjects.size(), floorPlanId);
+        return savedObjects;
     }
 
     private void validateObjectTableBelongsToRoom(FloorPlan plan, Map<String, Object> metadataJson) {
@@ -384,5 +435,27 @@ public class FloorPlanService {
             }
         }
         throw new IllegalArgumentException("JSON value must be an object");
+    }
+
+    private Double toDouble(Object value) {
+        if (value == null) return null;
+        if (value instanceof Number number) return number.doubleValue();
+        return Double.parseDouble(value.toString());
+    }
+
+    private Long toLong(Object value) {
+        if (value == null) return null;
+        if (value instanceof Number number) return number.longValue();
+        return Long.parseLong(value.toString());
+    }
+
+    private void resetFloorDiagramTransform(FloorPlan plan) {
+        plan.setFloorDiagramFitMode("contain");
+        plan.setFloorDiagramX(0.0);
+        plan.setFloorDiagramY(0.0);
+        plan.setFloorDiagramWidth(100.0);
+        plan.setFloorDiagramHeight(100.0);
+        plan.setFloorDiagramScale(1.0);
+        plan.setFloorDiagramRotation(0.0);
     }
 }

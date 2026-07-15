@@ -30,12 +30,15 @@ public class Booking {
     @Column(nullable = false)
     private Integer guests;
 
+    @Builder.Default
     @Column(nullable = false)
     private String status = "PENDING"; // PENDING, CONFIRMED, CHECKED_IN, CANCELLED, NO_SHOW
 
+    @Builder.Default
     @Column(nullable = false)
     private String source = "OFFLINE"; // ONLINE, OFFLINE
 
+    @Builder.Default
     @Column(nullable = false)
     private Boolean depositPaid = false;
 
@@ -45,9 +48,87 @@ public class Booking {
     @Column(name = "notes")
     private String notes;
 
+    @Column(name = "table_id")
+    private Long tableId;
+
+    @Column(name = "table_label")
+    private String tableLabel;
+
+    @Column(name = "dietary_notes")
+    private String dietaryNotes;
+
+    @Builder.Default
+    @Column(name = "allergy_peanut")
+    private Boolean allergyPeanut = false;
+
+    @Builder.Default
+    @Column(name = "allergy_gluten")
+    private Boolean allergyGluten = false;
+
+    @Column(name = "allergy_others")
+    private String allergyOthers;
+
+    @Column(name = "ordered_items_json", columnDefinition = "TEXT")
+    private String orderedItemsJson;
+
+    @Builder.Default
+    @Column(name = "deposit_amount")
+    private Double depositAmount = 0.0;
+
+    @Column(name = "payment_method")
+    private String paymentMethod; // QR_PAY, CARD, WALLET
+
+    @Builder.Default
+    @Column(name = "payment_status")
+    private String paymentStatus = "PENDING"; // PENDING, PAID, REFUNDED
+
+    @Column(name = "order_code")
+    private Long orderCode;
+
+    @Transient
+    private String checkoutUrl;
+
+    @Builder.Default
+    @Column(name = "duration_minutes")
+    private Integer durationMinutes = 120;
+
+    @Builder.Default
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 
+    @Column(name = "event_id")
+    private Long eventId;
+
+    @Builder.Default
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt = LocalDateTime.now();
+
+    @Column(name = "pending_update_json", columnDefinition = "TEXT")
+    private String pendingUpdateJson;
+
+    @PrePersist
+    @PreUpdate
+    public void beforeSave() {
+        if (Boolean.TRUE.equals(this.depositPaid) && this.pendingUpdateJson != null && !this.pendingUpdateJson.trim().isEmpty()) {
+            try {
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                java.util.Map<String, Object> map = mapper.readValue(this.pendingUpdateJson, java.util.Map.class);
+                if (map.get("bookingTime") != null) {
+                    this.bookingTime = java.time.LocalDateTime.parse((String) map.get("bookingTime"));
+                }
+                if (map.get("guests") != null) {
+                    this.guests = (Integer) map.get("guests");
+                }
+                if (map.get("orderedItemsJson") != null) {
+                    this.orderedItemsJson = (String) map.get("orderedItemsJson");
+                }
+                if (map.get("depositAmount") != null) {
+                    this.depositAmount = ((Number) map.get("depositAmount")).doubleValue();
+                }
+                this.pendingUpdateJson = null;
+            } catch (Exception e) {
+                System.err.println("Failed to parse pending update: " + e.getMessage());
+            }
+        }
+    }
 }

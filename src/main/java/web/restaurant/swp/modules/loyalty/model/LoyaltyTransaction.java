@@ -51,6 +51,7 @@ public class LoyaltyTransaction {
     @Column(nullable = false)
     private String type; // Earn, Redeem
 
+    @Builder.Default
     @Column(name = "transaction_date", nullable = false)
     private LocalDateTime transactionDate = LocalDateTime.now();
 

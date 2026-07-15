@@ -51,9 +51,11 @@ public class Employee {
     @Column(name = "hire_date")
     private LocalDate hireDate;
 
+    @Builder.Default
     @Column(name = "base_salary", nullable = false)
     private Double baseSalary = 0.0;
 
+    @Builder.Default
     @Column(name = "salary_type", nullable = false)
     private String salaryType = "Fixed"; // Fixed, Hourly, PerShift
 

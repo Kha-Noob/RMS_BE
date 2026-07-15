@@ -62,6 +62,7 @@ public class InventoryController {
     private final BranchTransferRepository branchTransferRepository;
     private final BranchTransferItemRepository branchTransferItemRepository;
     private final BranchAccessService branchAccessService;
+    private final AutonomousInventoryAgent autonomousInventoryAgent;
 
     private User getLoggedInUser() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -338,6 +339,7 @@ public class InventoryController {
                     product.setImagePath(request.getImagePath().trim());
                 }
                 product.setActive(request.isActive());
+                product.setIngredients(request.getIngredients());
                 productRepository.save(product);
 
                 variant.setName(request.getVariantName().trim());
@@ -358,6 +360,7 @@ public class InventoryController {
                         .description(request.getDescription())
                         .imagePath(request.getImagePath() != null && !request.getImagePath().trim().isEmpty() ? request.getImagePath().trim() : "default.png")
                         .isActive(request.isActive())
+                        .ingredients(request.getIngredients())
                         .build();
                 product = productRepository.save(product);
 
@@ -416,6 +419,7 @@ public class InventoryController {
         private String description;
         private String imagePath;
         private boolean active = true;
+        private String ingredients;
         
         private String variantName;
         private Double price;
@@ -557,5 +561,22 @@ public class InventoryController {
         private String sourceBranchId;
         private List<Long> itemIds;
         private List<Double> quantities;
+    }
+
+    @PostMapping("/api/inventory/ai-sync-stock")
+    public ResponseEntity<?> syncStockAvailability() {
+        try {
+            BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+            String branchId = branchAccessService.validateAndGetBranchId(null, error);
+            if (error.hasError()) return error.toResponse();
+
+            List<Map<String, Object>> report = autonomousInventoryAgent.syncMenuAvailability(branchId);
+            return ResponseEntity.ok(Map.of(
+                "message", "Đồng bộ tồn kho thực đơn hoàn tất.",
+                "report", report
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Lỗi đồng bộ: " + e.getMessage());
+        }
     }
 }

@@ -6,6 +6,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.type.SqlTypes;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import java.time.LocalDateTime;
 import java.util.Map;
@@ -23,6 +24,7 @@ public class FloorPlanObject {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "floor_plan_id", nullable = false)
+    @JsonIgnore
     private FloorPlan floorPlan;
 
     @Column(name = "table_id")
@@ -33,23 +35,29 @@ public class FloorPlanObject {
 
     private String label;
 
+    @Builder.Default
     @Column(nullable = false)
     private Double x = 0.0;
 
+    @Builder.Default
     @Column(nullable = false)
     private Double y = 0.0;
 
+    @Builder.Default
     @Column(nullable = false)
     private Double width = 80.0;
 
+    @Builder.Default
     @Column(nullable = false)
     private Double height = 80.0;
 
+    @Builder.Default
     @Column(nullable = false)
     private Double rotation = 0.0;
 
     private String shape; // circle, rectangle, line, arc
 
+    @Builder.Default
     @Column(name = "z_index", nullable = false)
     private Integer zIndex = 0;
 
@@ -61,9 +69,11 @@ public class FloorPlanObject {
     @JdbcTypeCode(SqlTypes.JSON)
     private Map<String, Object> metadataJson;
 
+    @Builder.Default
     @Column(name = "is_visible")
     private Boolean isVisible = true;
 
+    @Builder.Default
     @Column(name = "is_locked")
     private Boolean isLocked = false;
 

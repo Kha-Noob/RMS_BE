@@ -65,6 +65,17 @@ public class BranchAccessService {
             return branchId;
         }
 
+        boolean isCooperator = user.getRoles().stream().anyMatch(r -> "COOPERATOR".equals(r.getName()));
+        if (isCooperator && user.getTenant() != null) {
+            Branch requestedBranch = branchRepository.findById(branchId).orElse(null);
+            if (requestedBranch != null && requestedBranch.getTenant() != null &&
+                    requestedBranch.getTenant().getTenantId().equals(user.getTenant().getTenantId())) {
+                return branchId;
+            }
+            errorResponse.set(403, "You do not have access to this branch");
+            return null;
+        }
+
         if (user.getBranch() == null) {
             errorResponse.set(403, "No branch assigned to your account");
             return null;
@@ -100,6 +111,17 @@ public class BranchAccessService {
 
         if (isAdmin(user)) {
             return entityBranchId;
+        }
+
+        boolean isCooperatorEntity = user.getRoles().stream().anyMatch(r -> "COOPERATOR".equals(r.getName()));
+        if (isCooperatorEntity && user.getTenant() != null) {
+            Branch entityBranch = branchRepository.findById(entityBranchId).orElse(null);
+            if (entityBranch != null && entityBranch.getTenant() != null &&
+                    entityBranch.getTenant().getTenantId().equals(user.getTenant().getTenantId())) {
+                return entityBranchId;
+            }
+            errorResponse.set(403, "You do not have access to this branch");
+            return null;
         }
 
         if (user.getBranch() == null) {

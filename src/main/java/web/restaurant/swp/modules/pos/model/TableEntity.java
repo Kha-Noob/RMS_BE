@@ -47,11 +47,14 @@ public class TableEntity {
     @JoinColumn(name = "room_id", nullable = false)
     private Room room;
 
+    @Builder.Default
     @Column(nullable = false)
     private String status = "EMPTY"; // EMPTY, OCCUPIED, RESERVED
 
+    @Builder.Default
     private Integer capacity = 4;
     
+    @Builder.Default
     @Column(name = "guest_count")
     private Integer guestCount = 0;
 

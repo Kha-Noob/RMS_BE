@@ -2,6 +2,7 @@ package web.restaurant.swp.modules.floorplan.controller;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -18,9 +19,16 @@ import web.restaurant.swp.modules.upload.model.PresignRequest;
 import web.restaurant.swp.modules.upload.model.PresignResponse;
 import web.restaurant.swp.modules.upload.service.UploadService;
 
-import java.util.List;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 
 @RestController
 @RequiredArgsConstructor
@@ -31,6 +39,11 @@ public class FloorPlanManagementController {
     private final UserRepository userRepository;
     private final BranchAccessService branchAccessService;
     private final UploadService uploadService;
+
+    @Value("${app.upload.dir:./uploads}")
+    private String uploadDir;
+
+    // ─── Helpers ──────────────────────────────────────────────────────
 
     private User getLoggedInUser() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -70,6 +83,106 @@ public class FloorPlanManagementController {
         request.setSize(file.getSize());
         uploadService.validateImageFile(request);
     }
+
+    private String saveUploadedFile(MultipartFile file, String branchId, String subDir) throws IOException {
+        if (file.isEmpty()) throw new RuntimeException("File không được để trống");
+
+        String originalFilename = file.getOriginalFilename();
+        if (originalFilename == null) throw new RuntimeException("Tên file không hợp lệ");
+
+        String ext = "";
+        int dotIdx = originalFilename.lastIndexOf('.');
+        if (dotIdx >= 0) ext = originalFilename.substring(dotIdx + 1).toLowerCase();
+
+        Set<String> allowedTypes = Set.of("jpg", "jpeg", "png", "webp", "gif");
+        if (!allowedTypes.contains(ext)) {
+            throw new RuntimeException("Chỉ chấp nhận file ảnh: jpg, jpeg, png, webp, gif");
+        }
+
+        if (file.getSize() > 10 * 1024 * 1024) {
+            throw new RuntimeException("File tối đa 10MB");
+        }
+
+        String filename = UUID.randomUUID() + "." + ext;
+        String relativePath = "floor-plans" + File.separator + branchId + File.separator + subDir + File.separator + filename;
+        Path uploadPath = Paths.get(uploadDir, relativePath);
+        Files.createDirectories(uploadPath.getParent());
+        file.transferTo(uploadPath.toFile());
+
+        return "/api/floor-plans/files/" + relativePath.replace("\\", "/");
+    }
+
+    private Map<String, Object> toObjectResponse(FloorPlanObject obj) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("id", obj.getId());
+        response.put("tableId", obj.getTableId());
+        response.put("objectType", obj.getObjectType());
+        response.put("label", obj.getLabel() != null ? obj.getLabel() : "");
+        response.put("x", obj.getX());
+        response.put("y", obj.getY());
+        response.put("width", obj.getWidth());
+        response.put("height", obj.getHeight());
+        response.put("rotation", obj.getRotation());
+        response.put("shape", obj.getShape() != null ? obj.getShape() : "");
+        response.put("zIndex", obj.getZIndex());
+        response.put("styleJson", obj.getStyleJson() != null ? obj.getStyleJson() : Map.of());
+        response.put("metadataJson", obj.getMetadataJson() != null ? obj.getMetadataJson() : Map.of());
+        response.put("isVisible", obj.getIsVisible() == null || obj.getIsVisible());
+        response.put("isLocked", obj.getIsLocked() != null && obj.getIsLocked());
+        return response;
+    }
+
+    private Long toLong(Object value) {
+        if (value == null) return null;
+        if (value instanceof Number number) return number.longValue();
+        return Long.parseLong(value.toString());
+    }
+
+    private Map<String, Object> toFloorPlanResponse(FloorPlan plan) {
+        return toFloorPlanResponse(plan, false);
+    }
+
+    private Map<String, Object> toFloorPlanResponse(FloorPlan plan, boolean includeObjects) {
+        Map<String, Object> response = new java.util.LinkedHashMap<>();
+        response.put("id", plan.getId());
+        response.put("branch", Map.of("branchId", plan.getBranch().getBranchId()));
+        response.put("roomId", plan.getRoom() != null ? plan.getRoom().getId() : null);
+        response.put("room", plan.getRoom() != null
+                ? Map.of(
+                "id", plan.getRoom().getId(),
+                "name", plan.getRoom().getName(),
+                "displayOrder", plan.getRoom().getDisplayOrder() != null ? plan.getRoom().getDisplayOrder() : 0
+        )
+                : null);
+        response.put("name", plan.getName());
+        response.put("floorNumber", plan.getFloorNumber());
+        response.put("width", plan.getWidth());
+        response.put("height", plan.getHeight());
+        response.put("floorDiagramImageUrl", plan.getFloorDiagramImageUrl());
+        response.put("floorDiagramImageKey", plan.getFloorDiagramImageKey());
+        response.put("floorDiagramFitMode", plan.getFloorDiagramFitMode());
+        response.put("floorDiagramX", plan.getFloorDiagramX());
+        response.put("floorDiagramY", plan.getFloorDiagramY());
+        response.put("floorDiagramWidth", plan.getFloorDiagramWidth());
+        response.put("floorDiagramHeight", plan.getFloorDiagramHeight());
+        response.put("floorDiagramScale", plan.getFloorDiagramScale());
+        response.put("floorDiagramRotation", plan.getFloorDiagramRotation());
+        response.put("backgroundMode", plan.getBackgroundMode());
+        response.put("panoramaUrl", plan.getPanoramaUrl());
+        response.put("panoramaKey", plan.getPanoramaKey());
+        response.put("panoramaType", plan.getPanoramaType());
+        response.put("status", plan.getStatus());
+        response.put("createdAt", plan.getCreatedAt());
+        response.put("updatedAt", plan.getUpdatedAt());
+        if (includeObjects) {
+            response.put("floorPlanObjects", floorPlanService.listObjects(plan.getId()).stream()
+                    .map(this::toObjectResponse)
+                    .toList());
+        }
+        return response;
+    }
+
+    // ─── Floor Plan CRUD ──────────────────────────────────────────────
 
     @GetMapping("/api/branches/{branchId}/floor-plans")
     public ResponseEntity<?> listFloorPlans(@PathVariable String branchId) {
@@ -310,6 +423,28 @@ public class FloorPlanManagementController {
         }
     }
 
+    // Upload Background
+
+    @PostMapping("/api/floor-plans/{id}/upload-background")
+    public ResponseEntity<?> uploadBackground(@PathVariable Long id, @RequestParam("file") MultipartFile file) {
+        try {
+            User user = getLoggedInUser();
+            if (user == null) return ResponseEntity.status(401).body("Not authenticated");
+            requireAdminOrManager(user);
+
+            FloorPlan plan = floorPlanService.getFloorPlan(id);
+            BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+            branchAccessService.validateEntityBranch(plan.getBranch().getBranchId(), error);
+            if (error.hasError()) return error.toResponse();
+
+            String url = saveUploadedFile(file, plan.getBranch().getBranchId(), "backgrounds");
+            FloorPlan updated = floorPlanService.updateBackgroundImage(id, url, user);
+            return ResponseEntity.ok(updated);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
     // Upload 360 Panorama
 
     @PostMapping(value = "/api/floor-plans/{id}/upload-360", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -317,9 +452,7 @@ public class FloorPlanManagementController {
         try {
             User user = getLoggedInUser();
             if (user == null) return ResponseEntity.status(401).body("Not authenticated");
-            if (!isAdminOrManager(user)) {
-                return ResponseEntity.status(403).body(Map.of("message", "Permission denied"));
-            }
+            requireAdminOrManager(user);
 
             FloorPlan plan = floorPlanService.getFloorPlan(id);
             BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
@@ -427,75 +560,5 @@ public class FloorPlanManagementController {
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
-    }
-
-    private Map<String, Object> toObjectResponse(FloorPlanObject obj) {
-        Map<String, Object> response = new LinkedHashMap<>();
-        response.put("id", obj.getId());
-        response.put("tableId", obj.getTableId());
-        response.put("objectType", obj.getObjectType());
-        response.put("label", obj.getLabel() != null ? obj.getLabel() : "");
-        response.put("x", obj.getX());
-        response.put("y", obj.getY());
-        response.put("width", obj.getWidth());
-        response.put("height", obj.getHeight());
-        response.put("rotation", obj.getRotation());
-        response.put("shape", obj.getShape() != null ? obj.getShape() : "");
-        response.put("zIndex", obj.getZIndex());
-        response.put("styleJson", obj.getStyleJson() != null ? obj.getStyleJson() : Map.of());
-        response.put("metadataJson", obj.getMetadataJson() != null ? obj.getMetadataJson() : Map.of());
-        response.put("isVisible", obj.getIsVisible() == null || obj.getIsVisible());
-        response.put("isLocked", obj.getIsLocked() != null && obj.getIsLocked());
-        return response;
-    }
-
-    private Long toLong(Object value) {
-        if (value == null) return null;
-        if (value instanceof Number number) return number.longValue();
-        return Long.parseLong(value.toString());
-    }
-
-    private Map<String, Object> toFloorPlanResponse(FloorPlan plan) {
-        return toFloorPlanResponse(plan, false);
-    }
-
-    private Map<String, Object> toFloorPlanResponse(FloorPlan plan, boolean includeObjects) {
-        Map<String, Object> response = new java.util.LinkedHashMap<>();
-        response.put("id", plan.getId());
-        response.put("branch", Map.of("branchId", plan.getBranch().getBranchId()));
-        response.put("roomId", plan.getRoom() != null ? plan.getRoom().getId() : null);
-        response.put("room", plan.getRoom() != null
-                ? Map.of(
-                "id", plan.getRoom().getId(),
-                "name", plan.getRoom().getName(),
-                "displayOrder", plan.getRoom().getDisplayOrder() != null ? plan.getRoom().getDisplayOrder() : 0
-        )
-                : null);
-        response.put("name", plan.getName());
-        response.put("floorNumber", plan.getFloorNumber());
-        response.put("width", plan.getWidth());
-        response.put("height", plan.getHeight());
-        response.put("floorDiagramImageUrl", plan.getFloorDiagramImageUrl());
-        response.put("floorDiagramImageKey", plan.getFloorDiagramImageKey());
-        response.put("floorDiagramFitMode", plan.getFloorDiagramFitMode());
-        response.put("floorDiagramX", plan.getFloorDiagramX());
-        response.put("floorDiagramY", plan.getFloorDiagramY());
-        response.put("floorDiagramWidth", plan.getFloorDiagramWidth());
-        response.put("floorDiagramHeight", plan.getFloorDiagramHeight());
-        response.put("floorDiagramScale", plan.getFloorDiagramScale());
-        response.put("floorDiagramRotation", plan.getFloorDiagramRotation());
-        response.put("backgroundMode", plan.getBackgroundMode());
-        response.put("panoramaUrl", plan.getPanoramaUrl());
-        response.put("panoramaKey", plan.getPanoramaKey());
-        response.put("panoramaType", plan.getPanoramaType());
-        response.put("status", plan.getStatus());
-        response.put("createdAt", plan.getCreatedAt());
-        response.put("updatedAt", plan.getUpdatedAt());
-        if (includeObjects) {
-            response.put("floorPlanObjects", floorPlanService.listObjects(plan.getId()).stream()
-                    .map(this::toObjectResponse)
-                    .toList());
-        }
-        return response;
     }
 }

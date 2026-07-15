@@ -53,15 +53,18 @@ public class PurchaseOrder {
     @JoinColumn(name = "branch_id", nullable = false)
     private Branch branch;
 
+    @Builder.Default
     @Column(name = "order_date", nullable = false)
     private LocalDateTime orderDate = LocalDateTime.now();
 
     @Column(name = "delivery_deadline")
     private LocalDate deliveryDeadline;
 
+    @Builder.Default
     @Column(nullable = false)
     private String status = "DRAFT"; // DRAFT, PENDING, SENT, RECEIVED, CANCELLED
 
+    @Builder.Default
     @Column(name = "total_amount", nullable = false)
     private Double totalAmount = 0.0;
 }

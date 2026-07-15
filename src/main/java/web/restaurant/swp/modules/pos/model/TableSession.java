@@ -49,21 +49,25 @@ public class TableSession {
     @JoinColumn(name = "customer_id")
     private Customer customer; // Nullable if not registered/loyalty member
 
+    @Builder.Default
     @Column(name = "check_in_time", nullable = false)
     private LocalDateTime checkInTime = LocalDateTime.now();
 
     @Column(name = "check_out_time")
     private LocalDateTime checkOutTime;
 
+    @Builder.Default
     @Column(nullable = false)
     private String status = "ACTIVE"; // ACTIVE, COMPLETED
 
+    @Builder.Default
     @Column(name = "payment_status", nullable = false)
     private String paymentStatus = "UNPAID"; // UNPAID, PAID
 
     @Column(name = "payment_method")
     private String paymentMethod; // CASH, BANK_TRANSFER
 
+    @Builder.Default
     @Column(nullable = false)
     private String source = "WALK_IN"; // WALK_IN, ONLINE, OFFLINE
 }

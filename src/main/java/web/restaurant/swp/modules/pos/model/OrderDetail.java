@@ -51,6 +51,7 @@ public class OrderDetail {
     @Column(nullable = false)
     private Integer quantity;
 
+    @Builder.Default
     @Column(nullable = false)
     private String status = "PENDING"; // PENDING, COOKING, READY, SERVED, CANCELLED
 

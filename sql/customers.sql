@@ -19,5 +19,15 @@ INSERT INTO customers (id, name, phone, birth_date, membership_tier, loyalty_poi
 (17, 'Đinh Ngọc Diệp', '0912345617', '1997-05-27', 'Silver', 2040, 20400000.0, 'tenant-1'),
 (18, 'Lâm Quốc Khánh', '0912345618', '1998-05-28', 'Gold', 2160, 21600000.0, 'tenant-1'),
 (19, 'Cao Mỹ Linh', '0912345619', '1999-05-29', 'Platinum', 2280, 22800000.0, 'tenant-1'),
-(20, 'Mai Hữu Phước', '0912345620', '1990-05-30', 'Bronze', 2400, 24000000.0, 'tenant-1')
+(20, 'Mai Hữu Phước', '0912345620', '1990-05-30', 'Bronze', 2400, 24000000.0, 'tenant-1'),
+(21, 'Lê Minh Anh', '0912345656', '1991-06-01', 'Silver', 300, 3000000.0, 'tenant-1'),
+(22, 'Phạm Hoàng Nam', '0912345657', '1992-07-02', 'Gold', 450, 4500000.0, 'tenant-1'),
+(23, 'Nguyễn Khánh Vy', '0912345658', '1993-08-03', 'Platinum', 600, 6000000.0, 'tenant-1'),
+(24, 'Trần Quốc Bảo', '0912345659', '1994-09-04', 'Bronze', 150, 1500000.0, 'tenant-1'),
+(25, 'Vũ Gia Linh', '0912345660', '1995-10-05', 'Silver', 350, 3500000.0, 'tenant-1'),
+(26, 'Phan Minh Khang', '0912345661', '1996-11-06', 'Gold', 500, 5000000.0, 'tenant-1'),
+(27, 'Đỗ Thanh Trúc', '0912345662', '1997-12-07', 'Platinum', 750, 7500000.0, 'tenant-1'),
+(28, 'Bùi Đức Thắng', '0912345663', '1998-01-08', 'Bronze', 200, 2000000.0, 'tenant-1'),
+(29, 'Ngô Mai Chi', '0912345664', '1999-02-09', 'Silver', 400, 4000000.0, 'tenant-1'),
+(30, 'Dương Minh Quân', '0912345665', '1990-03-10', 'Gold', 550, 5500000.0, 'tenant-1')
 ON CONFLICT (id) DO NOTHING;

@@ -8,6 +8,7 @@ import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import web.restaurant.swp.modules.auth.repository.RoleRepository;
+import web.restaurant.swp.modules.auth.repository.UserRepository;
 
 import java.io.File;
 import java.nio.charset.StandardCharsets;
@@ -24,6 +25,7 @@ public class DataSeeder implements CommandLineRunner {
     private final ConfigurableEnvironment environment;
 
     private final RoleRepository roleRepository;
+    private final UserRepository userRepository;
     private final JdbcTemplate jdbcTemplate;
 
     @Override
@@ -41,6 +43,7 @@ public class DataSeeder implements CommandLineRunner {
 
         List<String> sqlFiles = Arrays.asList(
             "tenants.sql",
+            "tenant_custom_pages.sql",
             "roles.sql",
             "branches.sql",
             "users.sql",
@@ -80,7 +83,11 @@ public class DataSeeder implements CommandLineRunner {
             "payroll_entries.sql",
             "bookings.sql",
             "customer_reviews.sql",
-            "menu.sql"
+            "menu.sql",
+            "posts.sql",
+            "events.sql",
+            "floor_plans.sql",
+            "floor_plan_objects.sql"
         );
 
         // Try to locate the sql directory.
@@ -132,7 +139,8 @@ public class DataSeeder implements CommandLineRunner {
             "purchase_order_items", "goods_receipts", "goods_receipt_items", "promotions", "promotion_usage", 
             "user_sessions", "audit_logs", "branch_transfers", "branch_transfer_items", "inventory_logs", 
             "loyalty_transactions", "payroll_runs", "payroll_entries",
-            "bookings", "customer_reviews"
+            "bookings", "customer_reviews", "posts", "events",
+            "floor_plans", "floor_plan_objects", "tenant_custom_pages"
         );
 
         for (String tableName : tablesToReset) {
@@ -149,8 +157,9 @@ public class DataSeeder implements CommandLineRunner {
                 log.warn("Could not reset sequence for table: {}. Might not have an auto-increment id.", tableName);
             }
         }
+        log.info("Seeded Users list in Database:");
+        userRepository.findAll().forEach(u -> log.info(" -> Email: [{}], Name: [{}], Password Hash: [{}]", u.getEmail(), u.getName(), u.getPassword()));
 
         log.info("Database seeding successfully completed.");
     }
 }
-

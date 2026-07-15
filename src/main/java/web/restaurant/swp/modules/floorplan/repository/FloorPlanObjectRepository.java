@@ -18,6 +18,8 @@ public interface FloorPlanObjectRepository extends JpaRepository<FloorPlanObject
             """)
     List<FloorPlanObject> findByFloorPlanIdOrdered(@Param("floorPlanId") Long floorPlanId);
 
+    List<FloorPlanObject> findByFloorPlan_IdOrderByZIndexAscIdAsc(Long floorPlanId);
+
     void deleteByFloorPlan_Id(Long floorPlanId);
     long countByFloorPlan_Id(Long floorPlanId);
     List<FloorPlanObject> findByTableId(Long tableId);
