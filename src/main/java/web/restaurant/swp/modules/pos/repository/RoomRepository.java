@@ -36,4 +36,7 @@ import java.util.Optional;
 @Repository
 public interface RoomRepository extends JpaRepository<Room, Long> {
     List<Room> findByBranchBranchId(String branchId);
+    List<Room> findByBranchBranchIdOrderByDisplayOrderAscIdAsc(String branchId);
+    boolean existsByBranchBranchIdAndNameIgnoreCase(String branchId, String name);
+    boolean existsByBranchBranchIdAndNameIgnoreCaseAndIdNot(String branchId, String name, Long id);
 }

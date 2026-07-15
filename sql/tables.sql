@@ -1,23 +1,41 @@
--- Tables SQL data
-INSERT INTO tables (id, name, room_id, status, capacity, guest_count, layout_x, layout_y, layout_width, layout_height, layout_rotation, layout_radius, display_label) VALUES
-(1, 'Bàn 1', 2, 'OCCUPIED', 6, 2, 10.0, 15.0, 12.0, 8.0, 0.0, 25.0, NULL),
-(2, 'Bàn 2', 3, 'RESERVED', 4, 0, 30.0, 20.0, 10.0, 10.0, 0.0, 25.0, NULL),
-(3, 'Bàn 3', 4, 'EMPTY', 6, 0, 55.0, 15.0, 12.0, 8.0, 0.0, 25.0, NULL),
-(4, 'Bàn 4', 1, 'OCCUPIED', 4, 1, 15.0, 40.0, 10.0, 10.0, 45.0, 25.0, NULL),
-(5, 'Bàn 5', 2, 'RESERVED', 6, 0, 40.0, 45.0, 12.0, 8.0, 0.0, 25.0, NULL),
-(6, 'Bàn 6', 3, 'EMPTY', 4, 0, 70.0, 20.0, 10.0, 10.0, 0.0, 25.0, NULL),
-(7, 'Bàn 7', 4, 'OCCUPIED', 6, 4, 20.0, 55.0, 14.0, 10.0, 0.0, 25.0, NULL),
-(8, 'Bàn 8', 1, 'RESERVED', 4, 0, 65.0, 40.0, 10.0, 10.0, -30.0, 25.0, NULL),
-(9, 'Bàn 9', 2, 'EMPTY', 6, 0, 10.0, 70.0, 12.0, 8.0, 0.0, 25.0, NULL),
-(10, 'Bàn 10', 3, 'OCCUPIED', 4, 3, 35.0, 65.0, 10.0, 10.0, 0.0, 25.0, NULL),
-(11, 'Bàn 11', 4, 'RESERVED', 6, 0, 55.0, 60.0, 12.0, 8.0, 0.0, 25.0, NULL),
-(12, 'Bàn 12', 1, 'EMPTY', 4, 0, 80.0, 55.0, 10.0, 10.0, 0.0, 25.0, NULL),
-(13, 'Bàn 13', 2, 'OCCUPIED', 6, 2, 30.0, 80.0, 12.0, 8.0, 0.0, 25.0, NULL),
-(14, 'Bàn 14', 3, 'RESERVED', 4, 0, 60.0, 75.0, 10.0, 10.0, 0.0, 25.0, NULL),
-(15, 'Bàn 15', 4, 'EMPTY', 6, 0, 85.0, 70.0, 12.0, 8.0, 0.0, 25.0, NULL),
-(16, 'Bàn 16', 1, 'OCCUPIED', 4, 1, 15.0, 90.0, 10.0, 10.0, 0.0, 25.0, NULL),
-(17, 'Bàn 17', 2, 'RESERVED', 6, 0, 45.0, 90.0, 12.0, 8.0, 0.0, 25.0, NULL),
-(18, 'Bàn 18', 3, 'EMPTY', 4, 0, 75.0, 85.0, 10.0, 10.0, 0.0, 25.0, NULL),
-(19, 'Bàn 19', 4, 'OCCUPIED', 6, 4, 25.0, 100.0, 14.0, 10.0, 0.0, 25.0, NULL),
-(20, 'Bàn 20', 1, 'RESERVED', 4, 0, 60.0, 100.0, 10.0, 10.0, 0.0, 25.0, NULL)
-ON CONFLICT (id) DO NOTHING;
+-- Create exactly 20 available tables per branch:
+-- Tầng 1: Bàn 1 - Bàn 5
+-- Tầng 2: Bàn 6 - Bàn 10
+-- Tầng 3: Bàn 11 - Bàn 15
+-- Tầng 4: Bàn 16 - Bàn 20
+
+INSERT INTO tables (
+    name,
+    room_id,
+    status,
+    capacity,
+    guest_count,
+    layout_x,
+    layout_y,
+    layout_width,
+    layout_height,
+    layout_rotation,
+    layout_radius,
+    display_label,
+    table_style,
+    shape
+)
+SELECT
+    'Bàn ' || ((r.display_order * 5) + table_slot),
+    r.id,
+    'EMPTY',
+    4,
+    0,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    'Bàn ' || ((r.display_order * 5) + table_slot),
+    'ROUND',
+    'circle'
+FROM rooms r
+CROSS JOIN generate_series(1, 5) AS table_slot
+WHERE r.name IN ('Tầng 1', 'Tầng 2', 'Tầng 3', 'Tầng 4')
+ORDER BY r.branch_id, r.display_order, table_slot;

@@ -6,10 +6,9 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 import web.restaurant.swp.modules.auth.model.User;
 import web.restaurant.swp.modules.branch.model.Branch;
+import web.restaurant.swp.modules.pos.model.Room;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
 
 @Entity
 @Table(name = "floor_plans")
@@ -26,6 +25,10 @@ public class FloorPlan {
     @JoinColumn(name = "branch_id", nullable = false)
     private Branch branch;
 
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "room_id")
+    private Room room;
+
     @Column(nullable = false)
     private String name;
 
@@ -38,17 +41,47 @@ public class FloorPlan {
     @Column(nullable = false)
     private Integer height = 800;
 
-    @Column(name = "background_image_url")
-    private String backgroundImageUrl;
+    @Column(name = "floor_diagram_image_url")
+    private String floorDiagramImageUrl;
 
-    @Column(name = "panorama_360_url")
-    private String panorama360Url;
+    @Column(name = "floor_diagram_image_key")
+    private String floorDiagramImageKey;
+
+    @Column(name = "floor_diagram_fit_mode")
+    private String floorDiagramFitMode = "contain"; // contain, cover, fill
+
+    @Column(name = "floor_diagram_x")
+    private Double floorDiagramX = 0.0;
+
+    @Column(name = "floor_diagram_y")
+    private Double floorDiagramY = 0.0;
+
+    @Column(name = "floor_diagram_width")
+    private Double floorDiagramWidth = 100.0;
+
+    @Column(name = "floor_diagram_height")
+    private Double floorDiagramHeight = 100.0;
+
+    @Column(name = "floor_diagram_scale")
+    private Double floorDiagramScale = 1.0;
+
+    @Column(name = "floor_diagram_rotation")
+    private Double floorDiagramRotation = 0.0;
+
+    @Column(name = "background_mode", nullable = false)
+    private String backgroundMode = "DEFAULT_WOOD"; // DEFAULT_WOOD, DEFAULT_TILE, DEFAULT_GRID, CUSTOM_IMAGE
+
+    @Column(name = "panorama_url")
+    private String panoramaUrl;
+
+    @Column(name = "panorama_key")
+    private String panoramaKey;
+
+    @Column(name = "panorama_type")
+    private String panoramaType; // IMAGE_360, EXTERNAL_LINK
 
     @Column(nullable = false)
     private String status = "draft"; // draft, published
-
-    @Column(name = "is_table_selection_enabled", nullable = false)
-    private Boolean isTableSelectionEnabled = false;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by")
@@ -65,8 +98,4 @@ public class FloorPlan {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
-
-    @OneToMany(mappedBy = "floorPlan", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    @Builder.Default
-    private List<FloorPlanObject> floorPlanObjects = new ArrayList<>();
 }

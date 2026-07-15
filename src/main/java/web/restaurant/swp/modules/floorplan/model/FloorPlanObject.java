@@ -3,9 +3,12 @@ package web.restaurant.swp.modules.floorplan.model;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 
 @Entity
 @Table(name = "floor_plan_objects")
@@ -21,6 +24,9 @@ public class FloorPlanObject {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "floor_plan_id", nullable = false)
     private FloorPlan floorPlan;
+
+    @Column(name = "table_id")
+    private Long tableId;
 
     @Column(name = "object_type", nullable = false)
     private String objectType; // table, wall, door, window, toilet, cashier, kitchen, bar, stairs, text, decoration, blocked_area
@@ -48,10 +54,18 @@ public class FloorPlanObject {
     private Integer zIndex = 0;
 
     @Column(name = "style_json", columnDefinition = "jsonb")
-    private String styleJson;
+    @JdbcTypeCode(SqlTypes.JSON)
+    private Map<String, Object> styleJson;
 
     @Column(name = "metadata_json", columnDefinition = "jsonb")
-    private String metadataJson;
+    @JdbcTypeCode(SqlTypes.JSON)
+    private Map<String, Object> metadataJson;
+
+    @Column(name = "is_visible")
+    private Boolean isVisible = true;
+
+    @Column(name = "is_locked")
+    private Boolean isLocked = false;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)

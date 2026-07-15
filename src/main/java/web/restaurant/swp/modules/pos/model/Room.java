@@ -50,6 +50,9 @@ public class Room {
     @Column(name = "floor_plan_image_url")
     private String floorPlanImageUrl;
 
+    @Column(name = "background_mode")
+    private String backgroundMode;
+
     @Column(name = "panorama_url")
     private String panoramaUrl;
 

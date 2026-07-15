@@ -75,4 +75,10 @@ public class TableEntity {
 
     @Column(name = "display_label")
     private String displayLabel;
+
+    @Column(name = "table_style")
+    private String tableStyle = "ROUND"; // ROUND, SQUARE, RECTANGLE, VIP
+
+    @Column(name = "shape")
+    private String shape = "circle"; // circle, rectangle
 }

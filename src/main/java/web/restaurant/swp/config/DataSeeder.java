@@ -3,6 +3,7 @@ package web.restaurant.swp.config;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.core.annotation.Order;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -15,6 +16,7 @@ import java.util.Arrays;
 import java.util.List;
 
 @Component
+@Order(1)
 @RequiredArgsConstructor
 @Slf4j
 public class DataSeeder implements CommandLineRunner {
@@ -78,8 +80,7 @@ public class DataSeeder implements CommandLineRunner {
             "payroll_entries.sql",
             "bookings.sql",
             "customer_reviews.sql",
-            "floor_plans.sql",
-            "floor_plan_objects.sql"
+            "menu.sql"
         );
 
         // Try to locate the sql directory.
@@ -131,8 +132,7 @@ public class DataSeeder implements CommandLineRunner {
             "purchase_order_items", "goods_receipts", "goods_receipt_items", "promotions", "promotion_usage", 
             "user_sessions", "audit_logs", "branch_transfers", "branch_transfer_items", "inventory_logs", 
             "loyalty_transactions", "payroll_runs", "payroll_entries",
-            "bookings", "customer_reviews",
-            "floor_plans", "floor_plan_objects"
+            "bookings", "customer_reviews"
         );
 
         for (String tableName : tablesToReset) {

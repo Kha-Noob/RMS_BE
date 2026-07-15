@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.*;
 
@@ -35,6 +36,10 @@ import web.restaurant.swp.modules.analytics.service.*;
 import web.restaurant.swp.modules.branch.model.*;
 import web.restaurant.swp.modules.branch.repository.*;
 import web.restaurant.swp.modules.branch.service.BranchAccessService;
+import web.restaurant.swp.modules.floorplan.model.FloorPlan;
+import web.restaurant.swp.modules.floorplan.model.FloorPlanObject;
+import web.restaurant.swp.modules.floorplan.repository.FloorPlanRepository;
+import web.restaurant.swp.modules.floorplan.repository.FloorPlanObjectRepository;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -66,6 +71,8 @@ public class PosController {
     private final AuthService authService;
     private final AuditLogRepository auditLogRepository;
     private final BranchAccessService branchAccessService;
+    private final FloorPlanRepository floorPlanRepository;
+    private final FloorPlanObjectRepository floorPlanObjectRepository;
 
     private User getLoggedInUser() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -83,6 +90,56 @@ public class PosController {
             return user.getTenant().getTenantId();
         }
         return "tenant-1";
+    }
+
+    private ResponseEntity<?> message(int status, String message) {
+        return ResponseEntity.status(status).body(Map.of("message", message));
+    }
+
+    private boolean canManageRoomsAndTables(User user) {
+        return user != null && user.getRoles().stream()
+                .anyMatch(r -> "ADMIN".equalsIgnoreCase(r.getName()) || "MANAGER".equalsIgnoreCase(r.getName()));
+    }
+
+    private String normalizeRequiredName(String value, String message) {
+        if (value == null || value.trim().isEmpty()) {
+            throw new IllegalArgumentException(message);
+        }
+        return value.trim();
+    }
+
+    private String normalizeTableStyle(String tableStyle) {
+        String normalized = tableStyle == null || tableStyle.trim().isEmpty()
+                ? "ROUND"
+                : tableStyle.trim().toUpperCase(Locale.ROOT);
+        if (!Set.of("ROUND", "SQUARE", "RECTANGLE", "VIP").contains(normalized)) {
+            throw new IllegalArgumentException("Ki?u b?n kh?ng h?p l?.");
+        }
+        return normalized;
+    }
+
+    private String shapeForTableStyle(String tableStyle) {
+        return "ROUND".equalsIgnoreCase(tableStyle) ? "circle" : "rectangle";
+    }
+
+    private void syncFloorPlanObjectsForTable(TableEntity table) {
+        List<FloorPlanObject> objects = floorPlanObjectRepository.findByTableId(table.getId());
+        for (FloorPlanObject object : objects) {
+            object.setLabel(table.getDisplayLabel() != null && !table.getDisplayLabel().isBlank()
+                    ? table.getDisplayLabel()
+                    : table.getName());
+            object.setShape(shapeForTableStyle(table.getTableStyle()));
+            Map<String, Object> metadata = object.getMetadataJson() != null
+                    ? new LinkedHashMap<>(object.getMetadataJson())
+                    : new LinkedHashMap<>();
+            metadata.put("tableEntityId", table.getId());
+            metadata.put("tableId", table.getId());
+            metadata.put("tableName", table.getName());
+            metadata.put("capacity", table.getCapacity());
+            metadata.put("tableStyle", table.getTableStyle());
+            object.setMetadataJson(metadata);
+        }
+        floorPlanObjectRepository.saveAll(objects);
     }
 
     @GetMapping("/api/pos/session/active")
@@ -144,7 +201,7 @@ public class PosController {
             TableSession session = orderService.openTableSession(tableId, customerId);
             User user = getLoggedInUser();
             authService.logAudit(user, "OPEN_SESSION", "Order", session.getId().toString(),
-                "Mở ca (Check-in) cho bàn " + session.getTable().getName(), "127.0.0.1", session.getTable().getRoom().getBranch().getBranchId());
+                "M? ca (Check-in) cho b?n " + session.getTable().getName(), "127.0.0.1", session.getTable().getRoom().getBranch().getBranchId());
             return ResponseEntity.ok(session);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
@@ -164,7 +221,7 @@ public class PosController {
             OrderDetail detail = orderService.addItemToSession(sessionId, variantId, quantity, notes);
             User user = getLoggedInUser();
             authService.logAudit(user, "ORDER_ADD_ITEM", "Order", detail.getOrder().getId().toString(),
-                "Thêm món: " + quantity + "x " + detail.getVariant().getProduct().getName() + " (" + detail.getVariant().getName() + ") vào bàn " + detail.getOrder().getSession().getTable().getName(),
+                "Th?m m?n: " + quantity + "x " + detail.getVariant().getProduct().getName() + " (" + detail.getVariant().getName() + ") v?o b?n " + detail.getOrder().getSession().getTable().getName(),
                 "127.0.0.1", detail.getOrder().getBranchId());
             return ResponseEntity.ok(detail);
         } catch (Exception e) {
@@ -255,7 +312,7 @@ public class PosController {
             User user = getLoggedInUser();
             String branchId = (session != null) ? session.getTable().getRoom().getBranch().getBranchId() : getActiveBranchId();
             authService.logAudit(user, "ORDER_SEND_KITCHEN", "Order", sessionId.toString(),
-                "Gửi yêu cầu chế biến món ăn bàn " + (session != null ? session.getTable().getName() : sessionId) + " xuống bếp",
+                "G?i y?u c?u ch? bi?n m?n ?n b?n " + (session != null ? session.getTable().getName() : sessionId) + " xu?ng b?p",
                 "127.0.0.1", branchId);
             KdsWebSocketHandler.broadcast("NEW_ORDER_SUBMITTED");
             return ResponseEntity.ok().build();
@@ -281,7 +338,7 @@ public class PosController {
             User user = getLoggedInUser();
             String branchId = (tgt != null) ? tgt.getTable().getRoom().getBranch().getBranchId() : getActiveBranchId();
             authService.logAudit(user, "BILL_MERGE", "Order", targetSessionId.toString(),
-                "Ghép hóa đơn từ bàn " + (src != null ? src.getTable().getName() : sourceSessionId) + " sang bàn " + (tgt != null ? tgt.getTable().getName() : targetSessionId),
+                "Gh?p h?a ??n t? b?n " + (src != null ? src.getTable().getName() : sourceSessionId) + " sang b?n " + (tgt != null ? tgt.getTable().getName() : targetSessionId),
                 "127.0.0.1", branchId);
             KdsWebSocketHandler.broadcast("ORDER_STATE_CHANGED");
             return ResponseEntity.ok().build();
@@ -308,7 +365,7 @@ public class PosController {
             User user = getLoggedInUser();
             String branchId = (original != null) ? original.getTable().getRoom().getBranch().getBranchId() : getActiveBranchId();
             authService.logAudit(user, "BILL_SPLIT", "Order", sessionId.toString(),
-                "Tách hóa đơn của bàn " + (original != null ? original.getTable().getName() : sessionId) + " (Tạo phiên bàn mới #" + sessions.get(1) + ")",
+                "T?ch h?a ??n c?a b?n " + (original != null ? original.getTable().getName() : sessionId) + " (T?o phi?n b?n m?i #" + sessions.get(1) + ")",
                 "127.0.0.1", branchId);
             KdsWebSocketHandler.broadcast("ORDER_STATE_CHANGED");
             return ResponseEntity.ok(sessions);
@@ -350,7 +407,7 @@ public class PosController {
             User user = getLoggedInUser();
             String branchId = (session != null) ? session.getTable().getRoom().getBranch().getBranchId() : getActiveBranchId();
             authService.logAudit(user, "BILL_PAYMENT", "Order", sessionId.toString(),
-                "Thanh toán thành công hóa đơn bàn " + (session != null ? session.getTable().getName() : sessionId) + ", số tiền: ₫" + String.format("%,.0f", amount) + " (" + paymentMethod + ")",
+                "Thanh to?n th?nh c?ng h?a ??n b?n " + (session != null ? session.getTable().getName() : sessionId) + ", s? ti?n: ?" + String.format("%,.0f", amount) + " (" + paymentMethod + ")",
                 "127.0.0.1", branchId);
             KdsWebSocketHandler.broadcast("ORDER_STATE_CHANGED");
             return ResponseEntity.ok().build();
@@ -460,7 +517,7 @@ public class PosController {
         try {
             User loggedInUser = branchAccessService.getLoggedInUser();
             if (loggedInUser == null || loggedInUser.getRoles().stream().noneMatch(r -> "ADMIN".equalsIgnoreCase(r.getName()))) {
-                return ResponseEntity.status(403).body("Không có quyền thực hiện thao tác này.");
+                return ResponseEntity.status(403).body("Kh?ng c? quy?n th?c hi?n thao t?c n?y.");
             }
 
             BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
@@ -468,7 +525,7 @@ public class PosController {
             if (error.hasError()) return error.toResponse();
 
             Branch branch = branchRepository.findById(branchId)
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy chi nhánh"));
+                    .orElseThrow(() -> new RuntimeException("Kh?ng t?m th?y chi nh?nh"));
 
             Optional<BankSetting> settingOpt = bankSettingRepository.findByBranchBranchId(branchId);
             BankSetting setting;
@@ -542,24 +599,178 @@ public class PosController {
             String branchId = branchAccessService.validateAndGetBranchId(null, error);
             if (error.hasError()) return error.toResponse();
 
-            List<Room> rooms = roomRepository.findByBranchBranchId(branchId);
+            List<Room> rooms = roomRepository.findByBranchBranchIdOrderByDisplayOrderAscIdAsc(branchId);
             return ResponseEntity.ok(rooms);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
 
+    // â”€â”€â”€ Floor Plan for POS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    @GetMapping("/api/pos/floor-plans/active")
+    public ResponseEntity<?> getActiveFloorPlan(@RequestParam(required = false) Long roomId,
+                                                 @RequestParam(required = false) String branchId,
+                                                 @RequestParam(required = false) Integer floorNumber) {
+        try {
+            BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+            String resolvedBranchId = branchAccessService.validateAndGetBranchId(branchId, error);
+            if (error.hasError()) return error.toResponse();
+
+            FloorPlan plan = null;
+
+            if (roomId != null) {
+                Room room = roomRepository.findById(roomId).orElse(null);
+                if (room != null && room.getBranch().getBranchId().equals(resolvedBranchId)) {
+                    plan = floorPlanRepository.findByRoom_IdAndStatusOrderByIdAsc(roomId, "published")
+                            .stream()
+                            .findFirst()
+                            .orElse(null);
+                }
+            } else if (floorNumber != null) {
+                List<FloorPlan> plans = floorPlanRepository
+                        .findByBranch_BranchIdAndStatusOrderByFloorNumberAsc(resolvedBranchId, "published");
+                for (FloorPlan fp : plans) {
+                    if (fp.getFloorNumber().equals(floorNumber)) {
+                        plan = fp;
+                        break;
+                    }
+                }
+            } else {
+                List<FloorPlan> plans = floorPlanRepository
+                        .findByBranch_BranchIdAndStatusOrderByFloorNumberAsc(resolvedBranchId, "published");
+                if (!plans.isEmpty()) {
+                    plan = plans.get(0);
+                }
+            }
+
+            if (plan == null) {
+                return ResponseEntity.ok(null);
+            }
+
+            List<FloorPlanObject> objects = floorPlanObjectRepository
+                    .findByFloorPlanIdOrdered(plan.getId());
+
+            // Build response with linked POS table data
+            List<Map<String, Object>> objectList = new ArrayList<>();
+            for (FloorPlanObject obj : objects) {
+                Map<String, Object> objMap = new LinkedHashMap<>();
+                objMap.put("id", obj.getId());
+                objMap.put("tableId", obj.getTableId());
+                objMap.put("objectType", obj.getObjectType());
+                objMap.put("label", obj.getLabel());
+                objMap.put("x", obj.getX());
+                objMap.put("y", obj.getY());
+                objMap.put("width", obj.getWidth());
+                objMap.put("height", obj.getHeight());
+                objMap.put("rotation", obj.getRotation());
+                objMap.put("shape", obj.getShape());
+                objMap.put("zIndex", obj.getZIndex());
+                objMap.put("styleJson", obj.getStyleJson());
+                objMap.put("metadataJson", obj.getMetadataJson());
+                objMap.put("isVisible", obj.getIsVisible());
+                objMap.put("isLocked", obj.getIsLocked());
+
+                // If table object, fetch linked POS table data
+                if ("table".equalsIgnoreCase(obj.getObjectType()) && (obj.getTableId() != null || obj.getMetadataJson() != null)) {
+                    try {
+                        Map<String, Object> meta = obj.getMetadataJson() != null ? obj.getMetadataJson() : Map.of();
+                        Object linkedTableId = obj.getTableId() != null ? obj.getTableId() : meta.get("linkedTableId");
+                        if (linkedTableId == null) linkedTableId = meta.get("tableEntityId");
+                        if (linkedTableId == null) linkedTableId = meta.get("tableId");
+                        if (linkedTableId != null) {
+                            Long tableId = linkedTableId instanceof Number
+                                    ? ((Number) linkedTableId).longValue()
+                                    : Long.parseLong(linkedTableId.toString());
+                            Optional<TableEntity> tableOpt = tableRepository.findById(tableId);
+                            if (tableOpt.isPresent()) {
+                                TableEntity t = tableOpt.get();
+                                Map<String, Object> posTable = new LinkedHashMap<>();
+                                posTable.put("id", t.getId());
+                                posTable.put("name", t.getName());
+                                posTable.put("status", t.getStatus());
+                                posTable.put("capacity", t.getCapacity());
+                                posTable.put("tableStyle", t.getTableStyle());
+                                posTable.put("shape", t.getShape());
+                                // Find active session
+                                Optional<TableSession> sessionOpt = tableSessionRepository
+                                        .findByTableIdAndStatus(t.getId(), "ACTIVE");
+                                posTable.put("activeSessionId", sessionOpt.map(TableSession::getId).orElse(null));
+                                objMap.put("posTable", posTable);
+                                objMap.put("linked", true);
+                            } else {
+                                objMap.put("linked", false);
+                            }
+                        } else {
+                            objMap.put("linked", false);
+                        }
+                    } catch (Exception e) {
+                        objMap.put("linked", false);
+                    }
+                } else {
+                    objMap.put("linked", false);
+                }
+
+                objectList.add(objMap);
+            }
+
+            // Build floor plan response
+            Map<String, Object> planMap = new LinkedHashMap<>();
+            planMap.put("id", plan.getId());
+            planMap.put("name", plan.getName());
+            planMap.put("floorNumber", plan.getFloorNumber());
+            planMap.put("roomId", plan.getRoom() != null ? plan.getRoom().getId() : null);
+            planMap.put("room", plan.getRoom() != null
+                    ? Map.of("id", plan.getRoom().getId(), "name", plan.getRoom().getName())
+                    : null);
+            planMap.put("width", plan.getWidth());
+            planMap.put("height", plan.getHeight());
+            planMap.put("backgroundMode", plan.getBackgroundMode());
+            planMap.put("floorDiagramImageUrl", plan.getFloorDiagramImageUrl());
+            planMap.put("floorDiagramImageKey", plan.getFloorDiagramImageKey());
+            planMap.put("floorDiagramFitMode", plan.getFloorDiagramFitMode());
+            planMap.put("floorDiagramX", plan.getFloorDiagramX());
+            planMap.put("floorDiagramY", plan.getFloorDiagramY());
+            planMap.put("floorDiagramWidth", plan.getFloorDiagramWidth());
+            planMap.put("floorDiagramHeight", plan.getFloorDiagramHeight());
+            planMap.put("floorDiagramScale", plan.getFloorDiagramScale());
+            planMap.put("floorDiagramRotation", plan.getFloorDiagramRotation());
+            planMap.put("panoramaUrl", plan.getPanoramaUrl());
+            planMap.put("panoramaKey", plan.getPanoramaKey());
+            planMap.put("panoramaType", plan.getPanoramaType());
+            planMap.put("status", plan.getStatus());
+
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("floorPlan", planMap);
+            response.put("objects", objectList);
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
     @GetMapping("/api/pos/tables")
-    public ResponseEntity<?> getTables() {
+    public ResponseEntity<?> getTables(@RequestParam(required = false) Long roomId) {
         try {
             BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
             String branchId = branchAccessService.validateAndGetBranchId(null, error);
             if (error.hasError()) return error.toResponse();
 
-            List<TableEntity> tables = tableRepository.findByRoomBranchBranchId(branchId);
-            return ResponseEntity.ok(tables);
+            if (roomId != null) {
+                Room room = roomRepository.findById(roomId)
+                        .orElseThrow(() -> new NoSuchElementException("Không tìm thấy dữ liệu"));
+                if (!room.getBranch().getBranchId().equals(branchId)) {
+                    return message(403, "You do not have access to this branch");
+                }
+                return ResponseEntity.ok(tableRepository.findByRoomIdOrderByIdAsc(roomId));
+            }
+
+            return ResponseEntity.ok(tableRepository.findByRoomBranchBranchIdOrderByRoomDisplayOrderAscIdAsc(branchId));
+        } catch (NoSuchElementException e) {
+            return message(404, "Không tìm thấy dữ liệu");
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return message(400, e.getMessage());
         }
     }
 
@@ -573,19 +784,23 @@ public class PosController {
             @RequestParam(required = false) Integer floorPlanWidth,
             @RequestParam(required = false) Integer floorPlanHeight) {
         try {
-            User loggedInUser = getLoggedInUser();
-            if (loggedInUser == null || loggedInUser.getRoles().stream().noneMatch(r -> "ADMIN".equalsIgnoreCase(r.getName()) || "MANAGER".equalsIgnoreCase(r.getName()))) {
-                return ResponseEntity.status(403).body("Không có quyền thực hiện thao tác này.");
+            if (!canManageRoomsAndTables(getLoggedInUser())) {
+                return message(403, "Không có quyền thực hiện thao tác này.");
             }
-            
+
             BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
             String branchId = branchAccessService.validateAndGetBranchId(null, error);
             if (error.hasError()) return error.toResponse();
 
+            String normalizedName = normalizeRequiredName(name, "Tên phòng là bắt buộc.");
+            if (roomRepository.existsByBranchBranchIdAndNameIgnoreCase(branchId, normalizedName)) {
+                return message(409, "Tên phòng đã tồn tại trong chi nhánh này.");
+            }
+
             Branch branch = branchRepository.findById(branchId)
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy chi nhánh"));
+                    .orElseThrow(() -> new NoSuchElementException("Không tìm thấy dữ liệu"));
             Room room = Room.builder()
-                    .name(name)
+                    .name(normalizedName)
                     .branch(branch)
                     .floorPlanImageUrl(floorPlanImageUrl)
                     .panoramaUrl(panoramaUrl)
@@ -594,10 +809,13 @@ public class PosController {
                     .floorPlanWidth(floorPlanWidth)
                     .floorPlanHeight(floorPlanHeight)
                     .build();
-            room = roomRepository.save(room);
-            return ResponseEntity.ok(room);
+            return ResponseEntity.ok(roomRepository.save(room));
+        } catch (IllegalArgumentException e) {
+            return message(400, e.getMessage());
+        } catch (NoSuchElementException e) {
+            return message(404, "Không tìm thấy dữ liệu");
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return message(500, e.getMessage());
         }
     }
 
@@ -612,20 +830,25 @@ public class PosController {
             @RequestParam(required = false) Integer floorPlanWidth,
             @RequestParam(required = false) Integer floorPlanHeight) {
         try {
-            User loggedInUser = getLoggedInUser();
-            if (loggedInUser == null || loggedInUser.getRoles().stream().noneMatch(r -> "ADMIN".equalsIgnoreCase(r.getName()) || "MANAGER".equalsIgnoreCase(r.getName()))) {
-                return ResponseEntity.status(403).body("Không có quyền thực hiện thao tác này.");
+            if (!canManageRoomsAndTables(getLoggedInUser())) {
+                return message(403, "Không có quyền thực hiện thao tác này.");
             }
 
             Room room = roomRepository.findById(roomId)
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy phòng/khu vực"));
+                    .orElseThrow(() -> new NoSuchElementException("Không tìm thấy dữ liệu"));
 
             String entityBranchId = room.getBranch().getBranchId();
             BranchAccessService.ErrorHolder branchError = new BranchAccessService.ErrorHolder();
             branchAccessService.validateEntityBranch(entityBranchId, branchError);
             if (branchError.hasError()) return branchError.toResponse();
 
-            if (name != null && !name.trim().isEmpty()) room.setName(name);
+            if (name != null) {
+                String normalizedName = normalizeRequiredName(name, "Tên phòng là bắt buộc.");
+                if (roomRepository.existsByBranchBranchIdAndNameIgnoreCaseAndIdNot(entityBranchId, normalizedName, roomId)) {
+                    return message(409, "Tên phòng đã tồn tại trong chi nhánh này.");
+                }
+                room.setName(normalizedName);
+            }
             if (floorPlanImageUrl != null) room.setFloorPlanImageUrl(floorPlanImageUrl);
             if (panoramaUrl != null) room.setPanoramaUrl(panoramaUrl);
             if (panoramaType != null) room.setPanoramaType(panoramaType);
@@ -633,38 +856,44 @@ public class PosController {
             if (floorPlanWidth != null) room.setFloorPlanWidth(floorPlanWidth);
             if (floorPlanHeight != null) room.setFloorPlanHeight(floorPlanHeight);
 
-            room = roomRepository.save(room);
-            return ResponseEntity.ok(room);
+            return ResponseEntity.ok(roomRepository.save(room));
+        } catch (IllegalArgumentException e) {
+            return message(400, e.getMessage());
+        } catch (NoSuchElementException e) {
+            return message(404, "Không tìm thấy dữ liệu");
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return message(500, e.getMessage());
         }
     }
 
     @PostMapping("/api/pos/rooms/delete")
     public ResponseEntity<?> deleteRoom(@RequestParam Long roomId) {
         try {
-            User loggedInUser = getLoggedInUser();
-            if (loggedInUser == null || loggedInUser.getRoles().stream().noneMatch(r -> "ADMIN".equalsIgnoreCase(r.getName()) || "MANAGER".equalsIgnoreCase(r.getName()))) {
-                return ResponseEntity.status(403).body("Không có quyền thực hiện thao tác này.");
+            if (!canManageRoomsAndTables(getLoggedInUser())) {
+                return message(403, "Không có quyền thực hiện thao tác này.");
             }
-            
+
             Room room = roomRepository.findById(roomId)
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy phòng/khu vực"));
+                    .orElseThrow(() -> new NoSuchElementException("Không tìm thấy dữ liệu"));
 
             String entityBranchId = room.getBranch().getBranchId();
             BranchAccessService.ErrorHolder branchError = new BranchAccessService.ErrorHolder();
             branchAccessService.validateEntityBranch(entityBranchId, branchError);
             if (branchError.hasError()) return branchError.toResponse();
 
-            List<TableEntity> tables = tableRepository.findByRoomId(roomId);
-            if (!tables.isEmpty()) {
-                return ResponseEntity.badRequest().body("Không thể xóa khu vực này vì vẫn còn bàn thuộc khu vực.");
+            if (!tableRepository.findByRoomId(roomId).isEmpty()) {
+                return message(409, "Không thể xóa phòng vì vẫn còn bàn trong phòng này.");
             }
-            
+            if (floorPlanRepository.existsByRoom_Id(roomId)) {
+                return message(409, "Không thể xóa phòng vì đang được sử dụng trong sơ đồ tầng.");
+            }
+
             roomRepository.delete(room);
             return ResponseEntity.ok().build();
+        } catch (NoSuchElementException e) {
+            return message(404, "Không tìm thấy dữ liệu");
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return message(500, e.getMessage());
         }
     }
 
@@ -673,6 +902,7 @@ public class PosController {
             @RequestParam String name,
             @RequestParam Long roomId,
             @RequestParam Integer capacity,
+            @RequestParam(required = false) String tableStyle,
             @RequestParam(required = false) Double layoutX,
             @RequestParam(required = false) Double layoutY,
             @RequestParam(required = false) Double layoutWidth,
@@ -681,21 +911,29 @@ public class PosController {
             @RequestParam(required = false) Double layoutRadius,
             @RequestParam(required = false) String displayLabel) {
         try {
-            User loggedInUser = getLoggedInUser();
-            if (loggedInUser == null || loggedInUser.getRoles().stream().noneMatch(r -> "ADMIN".equalsIgnoreCase(r.getName()) || "MANAGER".equalsIgnoreCase(r.getName()))) {
-                return ResponseEntity.status(403).body("Không có quyền thực hiện thao tác này.");
+            if (!canManageRoomsAndTables(getLoggedInUser())) {
+                return message(403, "Không có quyền thực hiện thao tác này.");
             }
-            
-            Room room = roomRepository.findById(roomId)
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy phòng/khu vực"));
 
-            String entityBranchId = room.getBranch().getBranchId();
+            String normalizedName = normalizeRequiredName(name, "Tên bàn là bắt buộc.");
+            if (capacity == null || capacity < 1) {
+                return message(400, "Sức chứa phải lớn hơn hoặc bằng 1.");
+            }
+            String normalizedStyle = normalizeTableStyle(tableStyle);
+
+            Room room = roomRepository.findById(roomId)
+                    .orElseThrow(() -> new NoSuchElementException("Không tìm thấy dữ liệu"));
+
             BranchAccessService.ErrorHolder branchError = new BranchAccessService.ErrorHolder();
-            branchAccessService.validateEntityBranch(entityBranchId, branchError);
+            branchAccessService.validateEntityBranch(room.getBranch().getBranchId(), branchError);
             if (branchError.hasError()) return branchError.toResponse();
 
+            if (tableRepository.existsByRoomIdAndNameIgnoreCase(roomId, normalizedName)) {
+                return message(409, "Tên bàn đã tồn tại trong phòng này.");
+            }
+
             TableEntity table = TableEntity.builder()
-                    .name(name)
+                    .name(normalizedName)
                     .room(room)
                     .capacity(capacity)
                     .status("EMPTY")
@@ -707,20 +945,27 @@ public class PosController {
                     .layoutRotation(layoutRotation)
                     .layoutRadius(layoutRadius)
                     .displayLabel(displayLabel)
+                    .tableStyle(normalizedStyle)
+                    .shape(shapeForTableStyle(normalizedStyle))
                     .build();
-            table = tableRepository.save(table);
-            return ResponseEntity.ok(table);
+            return ResponseEntity.ok(tableRepository.save(table));
+        } catch (IllegalArgumentException e) {
+            return message(400, e.getMessage());
+        } catch (NoSuchElementException e) {
+            return message(404, "Không tìm thấy dữ liệu");
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return message(500, e.getMessage());
         }
     }
 
     @PostMapping("/api/pos/tables/update")
+    @Transactional
     public ResponseEntity<?> updateTable(
             @RequestParam Long tableId,
             @RequestParam String name,
             @RequestParam Long roomId,
             @RequestParam Integer capacity,
+            @RequestParam(required = false) String tableStyle,
             @RequestParam(required = false) Double layoutX,
             @RequestParam(required = false) Double layoutY,
             @RequestParam(required = false) Double layoutWidth,
@@ -729,19 +974,39 @@ public class PosController {
             @RequestParam(required = false) Double layoutRadius,
             @RequestParam(required = false) String displayLabel) {
         try {
-            User loggedInUser = getLoggedInUser();
-            if (loggedInUser == null || loggedInUser.getRoles().stream().noneMatch(r -> "ADMIN".equalsIgnoreCase(r.getName()) || "MANAGER".equalsIgnoreCase(r.getName()))) {
-                return ResponseEntity.status(403).body("Không có quyền thực hiện thao tác này.");
+            if (!canManageRoomsAndTables(getLoggedInUser())) {
+                return message(403, "Không có quyền thực hiện thao tác này.");
             }
-            
+
+            String normalizedName = normalizeRequiredName(name, "Tên bàn là bắt buộc.");
+            if (capacity == null || capacity < 1) {
+                return message(400, "Sức chứa phải lớn hơn hoặc bằng 1.");
+            }
+            String normalizedStyle = normalizeTableStyle(tableStyle);
+
             TableEntity table = tableRepository.findById(tableId)
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy bàn"));
+                    .orElseThrow(() -> new NoSuchElementException("Không tìm thấy dữ liệu"));
             Room room = roomRepository.findById(roomId)
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy phòng/khu vực"));
-            
-            table.setName(name);
+                    .orElseThrow(() -> new NoSuchElementException("Không tìm thấy dữ liệu"));
+            Long previousRoomId = table.getRoom() != null ? table.getRoom().getId() : null;
+
+            BranchAccessService.ErrorHolder tableBranchError = new BranchAccessService.ErrorHolder();
+            branchAccessService.validateEntityBranch(table.getRoom().getBranch().getBranchId(), tableBranchError);
+            if (tableBranchError.hasError()) return tableBranchError.toResponse();
+
+            BranchAccessService.ErrorHolder roomBranchError = new BranchAccessService.ErrorHolder();
+            branchAccessService.validateEntityBranch(room.getBranch().getBranchId(), roomBranchError);
+            if (roomBranchError.hasError()) return roomBranchError.toResponse();
+
+            if (tableRepository.existsByRoomIdAndNameIgnoreCaseAndIdNot(roomId, normalizedName, tableId)) {
+                return message(409, "Tên bàn đã tồn tại trong phòng này.");
+            }
+
+            table.setName(normalizedName);
             table.setRoom(room);
             table.setCapacity(capacity);
+            table.setTableStyle(normalizedStyle);
+            table.setShape(shapeForTableStyle(normalizedStyle));
             if (layoutX != null) table.setLayoutX(layoutX);
             if (layoutY != null) table.setLayoutY(layoutY);
             if (layoutWidth != null) table.setLayoutWidth(layoutWidth);
@@ -749,47 +1014,49 @@ public class PosController {
             if (layoutRotation != null) table.setLayoutRotation(layoutRotation);
             if (layoutRadius != null) table.setLayoutRadius(layoutRadius);
             if (displayLabel != null) table.setDisplayLabel(displayLabel);
+
             table = tableRepository.save(table);
+            if (previousRoomId != null && !previousRoomId.equals(roomId)) {
+                floorPlanObjectRepository.deleteByTableIdOutsideRoom(tableId, roomId);
+            }
+            syncFloorPlanObjectsForTable(table);
             return ResponseEntity.ok(table);
+        } catch (IllegalArgumentException e) {
+            return message(400, e.getMessage());
+        } catch (NoSuchElementException e) {
+            return message(404, "Không tìm thấy dữ liệu");
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return message(500, e.getMessage());
         }
     }
 
     @PostMapping("/api/pos/tables/delete")
+    @Transactional
     public ResponseEntity<?> deleteTable(@RequestParam Long tableId) {
         try {
-            User loggedInUser = getLoggedInUser();
-            if (loggedInUser == null || loggedInUser.getRoles().stream().noneMatch(r -> "ADMIN".equalsIgnoreCase(r.getName()) || "MANAGER".equalsIgnoreCase(r.getName()))) {
-                return ResponseEntity.status(403).body("Không có quyền thực hiện thao tác này.");
+            if (!canManageRoomsAndTables(getLoggedInUser())) {
+                return message(403, "Không có quyền thực hiện thao tác này.");
             }
-            
-            TableEntity table = tableRepository.findById(tableId)
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy bàn"));
 
-            String entityBranchId = table.getRoom().getBranch().getBranchId();
+            TableEntity table = tableRepository.findById(tableId)
+                    .orElseThrow(() -> new NoSuchElementException("Không tìm thấy dữ liệu"));
+
             BranchAccessService.ErrorHolder branchError = new BranchAccessService.ErrorHolder();
-            branchAccessService.validateEntityBranch(entityBranchId, branchError);
+            branchAccessService.validateEntityBranch(table.getRoom().getBranch().getBranchId(), branchError);
             if (branchError.hasError()) return branchError.toResponse();
 
-            if (!"EMPTY".equalsIgnoreCase(table.getStatus())) {
-                return ResponseEntity.badRequest().body("Không thể xóa bàn đang có khách hoặc đã đặt.");
+            if (!"EMPTY".equalsIgnoreCase(table.getStatus())
+                    || tableSessionRepository.findByTableIdAndStatus(tableId, "ACTIVE").isPresent()) {
+                return message(409, "Không thể xóa bàn vì đang có phiên/order đang hoạt động.");
             }
-            
-            Optional<TableSession> sessionOpt = tableSessionRepository.findByTableIdAndStatus(tableId, "ACTIVE");
-            if (sessionOpt.isPresent()) {
-                return ResponseEntity.badRequest().body("Không thể xóa bàn đang có phiên hoạt động.");
-            }
-            
-            boolean hasHistory = tableSessionRepository.existsByTableId(tableId);
-            if (hasHistory) {
-                return ResponseEntity.badRequest().body("Không thể xóa bàn này vì đã có lịch sử hoạt động/hóa đơn. Bạn có thể đổi tên bàn hoặc chuyển nó sang phòng khác.");
-            }
-            
+
+            floorPlanObjectRepository.deleteByTableId(tableId);
             tableRepository.delete(table);
             return ResponseEntity.ok().build();
+        } catch (NoSuchElementException e) {
+            return message(404, "Không tìm thấy dữ liệu");
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return message(500, e.getMessage());
         }
     }
 
@@ -798,7 +1065,7 @@ public class PosController {
         try {
             User loggedInUser = getLoggedInUser();
             if (loggedInUser == null || loggedInUser.getRoles().stream().noneMatch(r -> "ADMIN".equalsIgnoreCase(r.getName()))) {
-                return ResponseEntity.status(403).body("Không có quyền truy cập.");
+                return ResponseEntity.status(403).body("Kh?ng c? quy?n truy c?p.");
             }
 
             String tenantId = getActiveTenantId();
@@ -824,7 +1091,7 @@ public class PosController {
                 map.put("name", u.getName());
                 map.put("email", u.getEmail());
                 map.put("branchId", u.getBranch() != null ? u.getBranch().getBranchId() : "");
-                map.put("branchName", u.getBranch() != null ? u.getBranch().getName() : "Hệ Thống (Không chi nhánh)");
+                map.put("branchName", u.getBranch() != null ? u.getBranch().getName() : "H? Th?ng (Kh?ng chi nh?nh)");
                 
                 String roleName = u.getRoles().stream()
                         .map(Role::getName)
@@ -854,18 +1121,18 @@ public class PosController {
         try {
             User loggedInUser = getLoggedInUser();
             if (loggedInUser == null || loggedInUser.getRoles().stream().noneMatch(r -> "ADMIN".equalsIgnoreCase(r.getName()))) {
-                return ResponseEntity.status(403).body("Không có quyền thực hiện.");
+                return ResponseEntity.status(403).body("Kh?ng c? quy?n th?c hi?n.");
             }
 
             boolean isPartnerAdmin = loggedInUser.getBranch() != null;
             if (isPartnerAdmin) {
                 if (branchId == null || branchId.trim().isEmpty()) {
-                    return ResponseEntity.badRequest().body("Vui lòng chọn chi nhánh quản lý.");
+                    return ResponseEntity.badRequest().body("Vui l?ng ch?n chi nh?nh qu?n l?.");
                 }
             }
 
             if (userRepository.findByEmail(email).isPresent()) {
-                return ResponseEntity.badRequest().body("Email đã tồn tại trong hệ thống.");
+                return ResponseEntity.badRequest().body("Email ?? t?n t?i trong h? th?ng.");
             }
 
             Branch branch = null;
@@ -873,7 +1140,7 @@ public class PosController {
                 if (newBranchId == null || newBranchId.trim().isEmpty() || 
                     newBranchName == null || newBranchName.trim().isEmpty() ||
                     newBranchAddress == null || newBranchAddress.trim().isEmpty()) {
-                    return ResponseEntity.badRequest().body("Vui lòng nhập đầy đủ mã, tên và địa chỉ chi nhánh mới.");
+                    return ResponseEntity.badRequest().body("Vui l?ng nh?p ??y ?? m?, t?n v? ??a ch? chi nh?nh m?i.");
                 }
                 Optional<Branch> existingBranch = branchRepository.findById(newBranchId.trim());
                 if (existingBranch.isPresent()) {
@@ -895,7 +1162,7 @@ public class PosController {
 
             String resolvedRoleName = isPartnerAdmin ? "MANAGER" : "ADMIN";
             Role role = roleRepository.findByName(resolvedRoleName)
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy vai trò " + resolvedRoleName));
+                    .orElseThrow(() -> new RuntimeException("Kh?ng t?m th?y vai tr? " + resolvedRoleName));
 
             User user = User.builder()
                     .email(email)
@@ -930,30 +1197,30 @@ public class PosController {
         try {
             User loggedInUser = getLoggedInUser();
             if (loggedInUser == null || loggedInUser.getRoles().stream().noneMatch(r -> "ADMIN".equalsIgnoreCase(r.getName()))) {
-                return ResponseEntity.status(403).body("Không có quyền thực hiện.");
+                return ResponseEntity.status(403).body("Kh?ng c? quy?n th?c hi?n.");
             }
 
             User user = userRepository.findById(id)
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy tài khoản."));
+                    .orElseThrow(() -> new RuntimeException("Kh?ng t?m th?y t?i kho?n."));
 
             boolean isPartnerAdmin = loggedInUser.getBranch() != null;
             if (isPartnerAdmin) {
                 boolean targetIsManager = user.getRoles().stream().anyMatch(r -> "MANAGER".equalsIgnoreCase(r.getName()));
                 if (!targetIsManager) {
-                    return ResponseEntity.status(403).body("Không có quyền chỉnh sửa tài khoản quản trị khác.");
+                    return ResponseEntity.status(403).body("Kh?ng c? quy?n ch?nh s?a t?i kho?n qu?n tr? kh?c.");
                 }
                 if (branchId == null || branchId.trim().isEmpty()) {
-                    return ResponseEntity.badRequest().body("Vui lòng chọn chi nhánh quản lý.");
+                    return ResponseEntity.badRequest().body("Vui l?ng ch?n chi nh?nh qu?n l?.");
                 }
             }
 
             if (user.getTenant() == null || !user.getTenant().getTenantId().equals(loggedInUser.getTenant().getTenantId())) {
-                return ResponseEntity.status(403).body("Không có quyền thực hiện thao tác trên tài khoản thuộc tenant khác.");
+                return ResponseEntity.status(403).body("Kh?ng c? quy?n th?c hi?n thao t?c tr?n t?i kho?n thu?c tenant kh?c.");
             }
 
             if (!user.getEmail().equalsIgnoreCase(email)) {
                 if (userRepository.findByEmail(email).isPresent()) {
-                    return ResponseEntity.badRequest().body("Email đã tồn tại.");
+                    return ResponseEntity.badRequest().body("Email ?? t?n t?i.");
                 }
                 user.setEmail(email);
             }
@@ -970,7 +1237,7 @@ public class PosController {
                 if (newBranchId == null || newBranchId.trim().isEmpty() || 
                     newBranchName == null || newBranchName.trim().isEmpty() ||
                     newBranchAddress == null || newBranchAddress.trim().isEmpty()) {
-                    return ResponseEntity.badRequest().body("Vui lòng nhập đầy đủ mã, tên và địa chỉ chi nhánh mới.");
+                    return ResponseEntity.badRequest().body("Vui l?ng nh?p ??y ?? m?, t?n v? ??a ch? chi nh?nh m?i.");
                 }
                 Optional<Branch> existingBranch = branchRepository.findById(newBranchId.trim());
                 if (existingBranch.isPresent()) {
@@ -993,7 +1260,7 @@ public class PosController {
 
             String resolvedRoleName = isPartnerAdmin ? "MANAGER" : "ADMIN";
             Role role = roleRepository.findByName(resolvedRoleName)
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy vai trò."));
+                    .orElseThrow(() -> new RuntimeException("Kh?ng t?m th?y vai tr?."));
             user.setRoles(new HashSet<>(Arrays.asList(role)));
 
             user = userRepository.save(user);
@@ -1009,34 +1276,34 @@ public class PosController {
         try {
             User loggedInUser = getLoggedInUser();
             if (loggedInUser == null || loggedInUser.getRoles().stream().noneMatch(r -> "ADMIN".equalsIgnoreCase(r.getName()))) {
-                return ResponseEntity.status(403).body("Không có quyền thực hiện.");
+                return ResponseEntity.status(403).body("Kh?ng c? quy?n th?c hi?n.");
             }
 
             User user = userRepository.findById(id)
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy tài khoản."));
+                    .orElseThrow(() -> new RuntimeException("Kh?ng t?m th?y t?i kho?n."));
 
             boolean isPartnerAdmin = loggedInUser.getBranch() != null;
             if (isPartnerAdmin) {
                 boolean targetIsManager = user.getRoles().stream().anyMatch(r -> "MANAGER".equalsIgnoreCase(r.getName()));
                 if (!targetIsManager) {
-                    return ResponseEntity.status(403).body("Không có quyền xóa tài khoản quản trị khác.");
+                    return ResponseEntity.status(403).body("Kh?ng c? quy?n x?a t?i kho?n qu?n tr? kh?c.");
                 }
             }
 
             if (user.getTenant() == null || !user.getTenant().getTenantId().equals(loggedInUser.getTenant().getTenantId())) {
-                return ResponseEntity.status(403).body("Không có quyền thực hiện thao tác trên tài khoản thuộc tenant khác.");
+                return ResponseEntity.status(403).body("Kh?ng c? quy?n th?c hi?n thao t?c tr?n t?i kho?n thu?c tenant kh?c.");
             }
 
             Optional<Employee> empOpt = employeeRepository.findByUserId(id);
             if (empOpt.isPresent()) {
                 user.setActive(false);
                 userRepository.save(user);
-                return ResponseEntity.ok(Map.of("message", "Tài khoản có hồ sơ nhân sự liên kết. Đã vô hiệu hóa (khóa) tài khoản thay vì xóa vật lý.", "softDeleted", true));
+                return ResponseEntity.ok(Map.of("message", "T?i kho?n c? h? s? nh?n s? li?n k?t. ?? v? hi?u h?a (kh?a) t?i kho?n thay v? x?a v?t l?.", "softDeleted", true));
             }
 
             userSessionRepository.deleteByUserId(id);
             userRepository.delete(user);
-            return ResponseEntity.ok(Map.of("message", "Đã xóa tài khoản thành công.", "softDeleted", false));
+            return ResponseEntity.ok(Map.of("message", "?? x?a t?i kho?n th?nh c?ng.", "softDeleted", false));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
