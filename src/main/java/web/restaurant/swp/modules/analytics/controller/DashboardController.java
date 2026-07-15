@@ -66,27 +66,22 @@ public class DashboardController {
             Branch branch = branchRepository.findById(branchId).orElse(null);
             String branchName = branch != null ? branch.getName() : "";
 
-            // Orders in range
             List<Order> allBranchOrders = orderRepository.findByBranchId(branchId);
             List<Order> rangeOrders = allBranchOrders.stream()
                     .filter(o -> o.getOrderDate() != null && !o.getOrderDate().isBefore(rangeStartDateTime) && o.getOrderDate().isBefore(rangeEndDateTime))
                     .filter(o -> "SERVED".equalsIgnoreCase(o.getStatus()))
                     .collect(Collectors.toList());
 
-            // Bookings in range
             List<Booking> rangeBookings = bookingRepository.findByBranchIdAndBookingTimeBetween(branchId, rangeStartDateTime, rangeEndDateTime);
 
-            // Reviews in range
             List<CustomerReview> rangeReviews = customerReviewRepository.findByBranchIdAndCreatedAtBetween(branchId, rangeStartDateTime, rangeEndDateTime);
 
-            // ── KPI Calculations ──
             long customerVisits = rangeOrders.size();
 
             double totalRevenue = rangeOrders.stream()
                     .mapToDouble(o -> o.getTotalAmount() != null ? o.getTotalAmount() : 0.0)
                     .sum();
 
-            // Booking success: CHECKED_IN means customer came and dined
             long totalBookings = rangeBookings.size();
             long successfulBookings = rangeBookings.stream()
                     .filter(b -> "CHECKED_IN".equalsIgnoreCase(b.getStatus()))
@@ -116,10 +111,8 @@ public class DashboardController {
                             .average()
                             .orElse(0.0) * 10.0) / 10.0;
 
-            // Revenue trend
             List<Map<String, Object>> revenueTrend = buildRevenueTrend(rangeStartDate, rangeEndDate, allBranchOrders);
 
-            // Build response
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("branchId", branchId);
             result.put("branchName", branchName);
@@ -196,7 +189,6 @@ public class DashboardController {
         if (clean.contains("miễn phí") || clean.contains("free") || clean.contains("free admission")) {
             return 0.0;
         }
-        // Keep only digits
         clean = clean.replaceAll("[^0-9]", "");
         if (clean.isEmpty()) return 0.0;
         try {

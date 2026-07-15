@@ -3,6 +3,7 @@ package web.restaurant.swp.config;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.core.annotation.Order;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -16,6 +17,7 @@ import java.util.Arrays;
 import java.util.List;
 
 @Component
+@Order(1)
 @RequiredArgsConstructor
 @Slf4j
 public class DataSeeder implements CommandLineRunner {
@@ -81,6 +83,7 @@ public class DataSeeder implements CommandLineRunner {
             "payroll_entries.sql",
             "bookings.sql",
             "customer_reviews.sql",
+            "menu.sql",
             "posts.sql",
             "events.sql",
             "floor_plans.sql",
@@ -160,4 +163,3 @@ public class DataSeeder implements CommandLineRunner {
         log.info("Database seeding successfully completed.");
     }
 }
-

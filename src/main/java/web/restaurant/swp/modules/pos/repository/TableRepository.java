@@ -35,5 +35,9 @@ import java.util.Optional;
 @Repository
 public interface TableRepository extends JpaRepository<TableEntity, Long> {
     List<TableEntity> findByRoomBranchBranchId(String branchId);
+    List<TableEntity> findByRoomBranchBranchIdOrderByRoomDisplayOrderAscIdAsc(String branchId);
     List<TableEntity> findByRoomId(Long roomId);
+    List<TableEntity> findByRoomIdOrderByIdAsc(Long roomId);
+    boolean existsByRoomIdAndNameIgnoreCase(Long roomId, String name);
+    boolean existsByRoomIdAndNameIgnoreCaseAndIdNot(Long roomId, String name, Long id);
 }

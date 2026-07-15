@@ -2,7 +2,6 @@ package web.restaurant.swp.config;
 
 import web.restaurant.swp.modules.auth.model.*;
 import web.restaurant.swp.modules.auth.repository.*;
-import web.restaurant.swp.modules.auth.service.*;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -10,14 +9,11 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
-import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.oauth2.client.userinfo.DefaultOAuth2UserService;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserService;
@@ -25,6 +21,7 @@ import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.oauth2.core.user.DefaultOAuth2User;
 import org.springframework.security.oauth2.core.user.OAuth2User;
+import org.springframework.security.web.SecurityFilterChain;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -50,9 +47,10 @@ public class SecurityConfig {
             if (userOpt.isEmpty()) {
                 throw new UsernameNotFoundException("User not found");
             }
+
             User user = userOpt.get();
             if (!user.isActive()) {
-                throw new RuntimeException("Tài khoản đang bị khoá.");
+                throw new RuntimeException("Tài khoản đang bị khóa.");
             }
 
             Collection<GrantedAuthority> authorities = new ArrayList<>();
@@ -126,6 +124,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/events/public", "/api/events/public/**").permitAll()
                 .requestMatchers("/api/events/**").hasAnyRole("ADMIN", "COOPERATOR")
                 .requestMatchers("/api/floor-plans/files/**").permitAll()
+                .requestMatchers("/uploads/**").permitAll()
                 .requestMatchers("/api/admin/tenants/**").hasRole("ADMIN")
                 .requestMatchers("/api/cooperator/tenant/bank/**").hasAnyRole("ADMIN", "COOPERATOR")
                 .requestMatchers("/api/pos/bank-setting/**").hasAnyRole("ADMIN", "COOPERATOR", "MANAGER")
@@ -161,7 +160,7 @@ public class SecurityConfig {
                                      (System.getenv("FRONTEND_URL") != null ? System.getenv("FRONTEND_URL") : "http://localhost:3000")
                                              + "/oauth2/callback?email=" + email + "&credentials=" + passcode);
                          } else {
-                             // Non‑customer users: redirect to login with error
+                             // Non-customer users: redirect to login with error
                              response.sendRedirect(
                                      (System.getenv("FRONTEND_URL") != null ? System.getenv("FRONTEND_URL") : "http://localhost:3000")
                                              + "/login?error=not_customer");
@@ -244,7 +243,7 @@ public class SecurityConfig {
             }
 
             if (!user.isActive()) {
-                throw new OAuth2AuthenticationException(new OAuth2Error("unauthorized_client"), "Tài khoản đang bị khoá.");
+                throw new OAuth2AuthenticationException(new OAuth2Error("unauthorized_client"), "Tài khoản đang bị khóa.");
             }
 
             Collection<GrantedAuthority> authorities = new ArrayList<>();
