@@ -7,11 +7,15 @@ import org.springframework.transaction.annotation.Transactional;
 import web.restaurant.swp.modules.booking.model.Booking;
 import web.restaurant.swp.modules.booking.repository.BookingRepository;
 import web.restaurant.swp.modules.pos.repository.TableRepository;
+import web.restaurant.swp.modules.pos.model.TableEntity;
+import web.restaurant.swp.modules.pos.repository.TableSessionRepository;
+import web.restaurant.swp.modules.pos.model.TableSession;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
+import java.util.ArrayList;
 
 @Service
 @RequiredArgsConstructor
@@ -20,6 +24,7 @@ public class BookingService {
 
     private final BookingRepository bookingRepository;
     private final TableRepository tableRepository;
+    private final TableSessionRepository tableSessionRepository;
     private final org.springframework.mail.javamail.JavaMailSender mailSender;
     private final web.restaurant.swp.modules.branch.repository.BranchRepository branchRepository;
     private final web.restaurant.swp.modules.event.repository.EventRepository eventRepository;
@@ -54,11 +59,27 @@ public class BookingService {
         List<Booking> activeBookings = bookingRepository.findByBranchIdAndStatusNotInAndBookingTimeBetween(
                 branchId, List.of("CANCELLED", "NO_SHOW"), queryStart, queryEnd);
                 
-        return activeBookings.stream()
+        List<Long> bookedTableIds = new ArrayList<>(activeBookings.stream()
                 .filter(b -> isOverlapping(b.getBookingTime(), b.getDurationMinutes() != null ? b.getDurationMinutes() : 120, bookingTime, newDurationMinutes))
                 .map(Booking::getTableId)
                 .filter(Objects::nonNull)
-                .toList();
+                .toList());
+
+        // Real-time walk-in guest check: if the selected booking slot overlaps with any active walk-in sessions (120 mins duration)
+        List<TableSession> activeSessions = tableSessionRepository.findByTableRoomBranchBranchIdAndStatus(branchId, "ACTIVE");
+        for (TableSession session : activeSessions) {
+            if (session.getCheckInTime() != null) {
+                LocalDateTime sessionStart = session.getCheckInTime();
+                LocalDateTime sessionEnd = sessionStart.plusMinutes(120);
+                if (bookingTime.isAfter(sessionStart) && bookingTime.isBefore(sessionEnd)) {
+                    if (!bookedTableIds.contains(session.getTable().getId())) {
+                        bookedTableIds.add(session.getTable().getId());
+                    }
+                }
+            }
+        }
+                
+        return bookedTableIds;
     }
 
     /**
