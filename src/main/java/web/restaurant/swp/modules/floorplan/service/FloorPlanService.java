@@ -252,18 +252,28 @@ public class FloorPlanService {
     public FloorPlanObject createObject(Long floorPlanId, Map<String, Object> data) {
         FloorPlan plan = getFloorPlan(floorPlanId);
         Map<String, Object> metadataJson = objectMetadata(data);
+        String objectType = (String) data.get("objectType");
+        String label = (String) data.get("label");
+        Double x = data.get("x") != null ? ((Number) data.get("x")).doubleValue() : 0.0;
+        Double y = data.get("y") != null ? ((Number) data.get("y")).doubleValue() : 0.0;
+        Double width = data.get("width") != null ? ((Number) data.get("width")).doubleValue() : 80.0;
+        Double height = data.get("height") != null ? ((Number) data.get("height")).doubleValue() : 80.0;
+        Double rotation = data.get("rotation") != null ? ((Number) data.get("rotation")).doubleValue() : 0.0;
+
+        Long[] tableIdHolder = new Long[1];
+        metadataJson = syncTableEntityForObject(plan, objectType, label, x, y, width, height, rotation, metadataJson, tableIdHolder);
         validateObjectTableBelongsToRoom(plan, metadataJson);
 
         FloorPlanObject obj = FloorPlanObject.builder()
                 .floorPlan(plan)
-                .tableId(extractTableId(metadataJson))
-                .objectType((String) data.get("objectType"))
-                .label((String) data.get("label"))
-                .x(data.get("x") != null ? ((Number) data.get("x")).doubleValue() : 0.0)
-                .y(data.get("y") != null ? ((Number) data.get("y")).doubleValue() : 0.0)
-                .width(data.get("width") != null ? ((Number) data.get("width")).doubleValue() : 80.0)
-                .height(data.get("height") != null ? ((Number) data.get("height")).doubleValue() : 80.0)
-                .rotation(data.get("rotation") != null ? ((Number) data.get("rotation")).doubleValue() : 0.0)
+                .tableId(tableIdHolder[0])
+                .objectType(objectType)
+                .label(label)
+                .x(x)
+                .y(y)
+                .width(width)
+                .height(height)
+                .rotation(rotation)
                 .shape((String) data.get("shape"))
                 .zIndex(data.get("zIndex") != null ? ((Number) data.get("zIndex")).intValue() : 0)
                 .styleJson(toJsonMap(data.get("styleJson")))
@@ -291,9 +301,13 @@ public class FloorPlanService {
         if (data.containsKey("styleJson")) obj.setStyleJson(toJsonMap(data.get("styleJson")));
         if (data.containsKey("metadataJson") || data.containsKey("tableId")) {
             Map<String, Object> metadataJson = objectMetadata(data);
+            Long[] tableIdHolder = new Long[1];
+            metadataJson = syncTableEntityForObject(obj.getFloorPlan(), obj.getObjectType(), obj.getLabel(),
+                    obj.getX(), obj.getY(), obj.getWidth(), obj.getHeight(), obj.getRotation(),
+                    metadataJson, tableIdHolder);
             validateObjectTableBelongsToRoom(obj.getFloorPlan(), metadataJson);
             obj.setMetadataJson(metadataJson);
-            obj.setTableId(extractTableId(metadataJson));
+            obj.setTableId(tableIdHolder[0]);
         }
         if (data.containsKey("isVisible")) obj.setIsVisible(Boolean.parseBoolean(data.get("isVisible").toString()));
         if (data.containsKey("isLocked")) obj.setIsLocked(Boolean.parseBoolean(data.get("isLocked").toString()));
@@ -317,17 +331,28 @@ public class FloorPlanService {
         List<FloorPlanObject> saved = new ArrayList<>();
         for (Map<String, Object> data : objectsData) {
             Map<String, Object> metadataJson = objectMetadata(data);
+            String objectType = (String) data.get("objectType");
+            String label = (String) data.get("label");
+            Double x = data.get("x") != null ? ((Number) data.get("x")).doubleValue() : 0.0;
+            Double y = data.get("y") != null ? ((Number) data.get("y")).doubleValue() : 0.0;
+            Double width = data.get("width") != null ? ((Number) data.get("width")).doubleValue() : 80.0;
+            Double height = data.get("height") != null ? ((Number) data.get("height")).doubleValue() : 80.0;
+            Double rotation = data.get("rotation") != null ? ((Number) data.get("rotation")).doubleValue() : 0.0;
+
+            Long[] tableIdHolder = new Long[1];
+            metadataJson = syncTableEntityForObject(plan, objectType, label, x, y, width, height, rotation, metadataJson, tableIdHolder);
             validateObjectTableBelongsToRoom(plan, metadataJson);
+
             FloorPlanObject obj = FloorPlanObject.builder()
                     .floorPlan(plan)
-                    .tableId(extractTableId(metadataJson))
-                    .objectType((String) data.get("objectType"))
-                    .label((String) data.get("label"))
-                    .x(data.get("x") != null ? ((Number) data.get("x")).doubleValue() : 0.0)
-                    .y(data.get("y") != null ? ((Number) data.get("y")).doubleValue() : 0.0)
-                    .width(data.get("width") != null ? ((Number) data.get("width")).doubleValue() : 80.0)
-                    .height(data.get("height") != null ? ((Number) data.get("height")).doubleValue() : 80.0)
-                    .rotation(data.get("rotation") != null ? ((Number) data.get("rotation")).doubleValue() : 0.0)
+                    .tableId(tableIdHolder[0])
+                    .objectType(objectType)
+                    .label(label)
+                    .x(x)
+                    .y(y)
+                    .width(width)
+                    .height(height)
+                    .rotation(rotation)
                     .shape((String) data.get("shape"))
                     .zIndex(data.get("zIndex") != null ? ((Number) data.get("zIndex")).intValue() : 0)
                     .styleJson(toJsonMap(data.get("styleJson")))
@@ -352,16 +377,28 @@ public class FloorPlanService {
         List<FloorPlanObject> savedObjects = new ArrayList<>();
         for (Map<String, Object> data : objectDataList) {
             Map<String, Object> metadataJson = objectMetadata(data);
+            String objectType = (String) data.get("objectType");
+            String label = (String) data.get("label");
+            Double x = data.get("x") != null ? ((Number) data.get("x")).doubleValue() : 0.0;
+            Double y = data.get("y") != null ? ((Number) data.get("y")).doubleValue() : 0.0;
+            Double width = data.get("width") != null ? ((Number) data.get("width")).doubleValue() : 80.0;
+            Double height = data.get("height") != null ? ((Number) data.get("height")).doubleValue() : 80.0;
+            Double rotation = data.get("rotation") != null ? ((Number) data.get("rotation")).doubleValue() : 0.0;
+
+            Long[] tableIdHolder = new Long[1];
+            metadataJson = syncTableEntityForObject(plan, objectType, label, x, y, width, height, rotation, metadataJson, tableIdHolder);
+            validateObjectTableBelongsToRoom(plan, metadataJson);
+
             FloorPlanObject obj = FloorPlanObject.builder()
                     .floorPlan(plan)
-                    .tableId(extractTableId(metadataJson))
-                    .objectType((String) data.get("objectType"))
-                    .label((String) data.get("label"))
-                    .x(data.get("x") != null ? ((Number) data.get("x")).doubleValue() : 0.0)
-                    .y(data.get("y") != null ? ((Number) data.get("y")).doubleValue() : 0.0)
-                    .width(data.get("width") != null ? ((Number) data.get("width")).doubleValue() : 80.0)
-                    .height(data.get("height") != null ? ((Number) data.get("height")).doubleValue() : 80.0)
-                    .rotation(data.get("rotation") != null ? ((Number) data.get("rotation")).doubleValue() : 0.0)
+                    .tableId(tableIdHolder[0])
+                    .objectType(objectType)
+                    .label(label)
+                    .x(x)
+                    .y(y)
+                    .width(width)
+                    .height(height)
+                    .rotation(rotation)
                     .shape((String) data.get("shape"))
                     .zIndex(data.get("zIndex") != null ? ((Number) data.get("zIndex")).intValue() : 0)
                     .styleJson(toJsonMap(data.get("styleJson")))
@@ -373,6 +410,103 @@ public class FloorPlanService {
 
         log.info("Bulk updated {} objects for floor plan {}", savedObjects.size(), floorPlanId);
         return savedObjects;
+    }
+
+    @Transactional
+    public void syncAllTablesForFloorPlan(Long floorPlanId) {
+        FloorPlan plan = getFloorPlan(floorPlanId);
+        List<FloorPlanObject> objects = floorPlanObjectRepository.findByFloorPlanIdOrdered(floorPlanId);
+        for (FloorPlanObject obj : objects) {
+            if (isTableObjectType(obj.getObjectType())) {
+                Long[] tableIdHolder = new Long[1];
+                Map<String, Object> metadata = obj.getMetadataJson();
+                metadata = syncTableEntityForObject(plan, obj.getObjectType(), obj.getLabel(),
+                        obj.getX(), obj.getY(), obj.getWidth(), obj.getHeight(), obj.getRotation(),
+                        metadata, tableIdHolder);
+                obj.setMetadataJson(metadata);
+                obj.setTableId(tableIdHolder[0]);
+                floorPlanObjectRepository.save(obj);
+            }
+        }
+        log.info("Synchronized table entities for floor plan: {}", floorPlanId);
+    }
+
+    private boolean isTableObjectType(String objectType) {
+        if (objectType == null) return false;
+        String type = objectType.toLowerCase();
+        return "table".equals(type)
+                || type.startsWith("round_table_")
+                || type.startsWith("square_table_")
+                || type.startsWith("rectangle_table_")
+                || "vip_sofa".equals(type)
+                || "booth".equals(type);
+    }
+
+    private String determineTableStyle(String objectType, Map<String, Object> metadataJson) {
+        if (metadataJson != null && metadataJson.get("tableStyle") != null) {
+            return metadataJson.get("tableStyle").toString();
+        }
+        if (objectType == null) return "ROUND";
+        String type = objectType.toLowerCase();
+        if (type.contains("square")) return "SQUARE";
+        if (type.contains("rectangle")) return "RECTANGLE";
+        if (type.contains("vip")) return "VIP";
+        return "ROUND";
+    }
+
+    private Map<String, Object> syncTableEntityForObject(FloorPlan plan, String objectType, String label, Double x, Double y, Double width, Double height, Double rotation, Map<String, Object> metadataJson, Long[] tableIdHolder) {
+        if (!isTableObjectType(objectType)) {
+            tableIdHolder[0] = extractTableId(metadataJson);
+            return metadataJson;
+        }
+
+        Long tableId = extractTableId(metadataJson);
+        TableEntity table = null;
+        if (tableId != null) {
+            table = tableRepository.findById(tableId).orElse(null);
+        }
+        if (table == null) {
+            table = new TableEntity();
+            table.setStatus("EMPTY");
+            table.setGuestCount(0);
+        }
+
+        table.setName(label != null && !label.isBlank() ? label : "Bàn");
+        table.setRoom(plan.getRoom());
+
+        Integer capacity = 4;
+        if (metadataJson != null && metadataJson.get("capacity") != null) {
+            try {
+                capacity = Integer.parseInt(metadataJson.get("capacity").toString());
+            } catch (Exception ignored) {}
+        }
+        table.setCapacity(capacity);
+
+        String style = determineTableStyle(objectType, metadataJson);
+        table.setTableStyle(style);
+        table.setShape("ROUND".equalsIgnoreCase(style) ? "circle" : "rectangle");
+
+        table.setLayoutX(x != null ? x : 0.0);
+        table.setLayoutY(y != null ? y : 0.0);
+        table.setLayoutWidth(width != null ? width : 80.0);
+        table.setLayoutHeight(height != null ? height : 80.0);
+        table.setLayoutRotation(rotation != null ? rotation : 0.0);
+
+        table = tableRepository.save(table);
+        tableId = table.getId();
+
+        if (metadataJson == null) {
+            metadataJson = new LinkedHashMap<>();
+        }
+        metadataJson.put("tableEntityId", tableId);
+        metadataJson.put("tableId", tableId);
+        metadataJson.put("linkedTableId", tableId);
+        metadataJson.put("tableName", table.getName());
+        metadataJson.put("capacity", table.getCapacity());
+        metadataJson.put("tableStyle", table.getTableStyle());
+
+        tableIdHolder[0] = tableId;
+        return metadataJson;
     }
 
     private void validateObjectTableBelongsToRoom(FloorPlan plan, Map<String, Object> metadataJson) {

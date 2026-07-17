@@ -27,6 +27,9 @@ public class DataSeeder implements CommandLineRunner {
     private final RoleRepository roleRepository;
     private final UserRepository userRepository;
     private final JdbcTemplate jdbcTemplate;
+    private final web.restaurant.swp.modules.floorplan.repository.FloorPlanRepository floorPlanRepository;
+    private final web.restaurant.swp.modules.floorplan.repository.FloorPlanObjectRepository floorPlanObjectRepository;
+    private final web.restaurant.swp.modules.pos.repository.TableRepository tableRepository;
 
     @Override
     public void run(String... args) {
@@ -157,6 +160,84 @@ public class DataSeeder implements CommandLineRunner {
                 log.warn("Could not reset sequence for table: {}. Might not have an auto-increment id.", tableName);
             }
         }
+        // 1. Link floor plans to rooms
+        log.info("Linking floor plans to rooms...");
+        try {
+            jdbcTemplate.execute("UPDATE floor_plans SET room_id = (SELECT id FROM rooms WHERE name = 'Lầu 1' AND branch_id = '01-2thang9') WHERE id = 1");
+            jdbcTemplate.execute("UPDATE floor_plans SET room_id = (SELECT id FROM rooms WHERE name = 'Khu Vực 6' AND branch_id = '01-2thang9') WHERE id = 2");
+            jdbcTemplate.execute("UPDATE floor_plans SET room_id = (SELECT id FROM rooms WHERE name = 'Sân Trước' AND branch_id = '11-NguyenHuuTho') WHERE id = 3");
+            jdbcTemplate.execute("UPDATE floor_plans SET room_id = (SELECT id FROM rooms WHERE name = 'Lầu 2' AND branch_id = '11-NguyenHuuTho') WHERE id = 4");
+            jdbcTemplate.execute("UPDATE floor_plans SET room_id = (SELECT id FROM rooms WHERE name = 'Phòng Lạnh' AND branch_id = '21-HaiPhong') WHERE id = 5");
+        } catch (Exception e) {
+            log.error("Failed to link floor plans to rooms", e);
+        }
+
+        // 2. Sync seeded floor plan objects with TableEntities
+        log.info("Optimizing and linking floor plan objects to existing tables...");
+        try {
+            List<Long> floorPlanIds = Arrays.asList(1L, 2L, 3L, 4L, 5L);
+            for (Long floorPlanId : floorPlanIds) {
+                web.restaurant.swp.modules.floorplan.model.FloorPlan plan = floorPlanRepository.findById(floorPlanId).orElse(null);
+                if (plan == null || plan.getRoom() == null) continue;
+                
+                List<web.restaurant.swp.modules.pos.model.TableEntity> roomTables = tableRepository.findByRoomId(plan.getRoom().getId());
+                List<web.restaurant.swp.modules.floorplan.model.FloorPlanObject> tableObjects = floorPlanObjectRepository.findByFloorPlanIdOrdered(floorPlanId)
+                        .stream()
+                        .filter(obj -> {
+                            String type = obj.getObjectType() != null ? obj.getObjectType().toLowerCase() : "";
+                            return "table".equals(type) || type.startsWith("round_table_") || type.startsWith("square_table_") || type.startsWith("rectangle_table_") || "vip_sofa".equals(type) || "booth".equals(type);
+                        })
+                        .toList();
+                
+                for (int i = 0; i < tableObjects.size(); i++) {
+                    web.restaurant.swp.modules.floorplan.model.FloorPlanObject obj = tableObjects.get(i);
+                    web.restaurant.swp.modules.pos.model.TableEntity table;
+                    if (i < roomTables.size()) {
+                        table = roomTables.get(i);
+                        table.setName(obj.getLabel() != null && !obj.getLabel().isBlank() ? obj.getLabel() : table.getName());
+                        table.setDisplayLabel(obj.getLabel() != null && !obj.getLabel().isBlank() ? obj.getLabel() : table.getName());
+                        table.setLayoutX(obj.getX());
+                        table.setLayoutY(obj.getY());
+                        table.setLayoutWidth(obj.getWidth());
+                        table.setLayoutHeight(obj.getHeight());
+                        table.setLayoutRotation(obj.getRotation());
+                        table = tableRepository.save(table);
+                    } else {
+                        table = new web.restaurant.swp.modules.pos.model.TableEntity();
+                        table.setName(obj.getLabel() != null && !obj.getLabel().isBlank() ? obj.getLabel() : "Bàn");
+                        table.setDisplayLabel(table.getName());
+                        table.setRoom(plan.getRoom());
+                        table.setStatus("EMPTY");
+                        table.setGuestCount(0);
+                        table.setCapacity(4);
+                        table.setTableStyle("ROUND");
+                        table.setShape("circle");
+                        table.setLayoutX(obj.getX());
+                        table.setLayoutY(obj.getY());
+                        table.setLayoutWidth(obj.getWidth());
+                        table.setLayoutHeight(obj.getHeight());
+                        table.setLayoutRotation(obj.getRotation());
+                        table = tableRepository.save(table);
+                    }
+                    
+                    java.util.Map<String, Object> metadata = obj.getMetadataJson();
+                    if (metadata == null) metadata = new java.util.LinkedHashMap<>();
+                    metadata.put("tableEntityId", table.getId());
+                    metadata.put("tableId", table.getId());
+                    metadata.put("linkedTableId", table.getId());
+                    metadata.put("tableName", table.getName());
+                    metadata.put("capacity", table.getCapacity());
+                    metadata.put("tableStyle", table.getTableStyle());
+                    
+                    obj.setMetadataJson(metadata);
+                    obj.setTableId(table.getId());
+                    floorPlanObjectRepository.save(obj);
+                }
+            }
+        } catch (Exception e) {
+            log.error("Failed to link floor plan objects to existing tables", e);
+        }
+
         log.info("Seeded Users list in Database:");
         userRepository.findAll().forEach(u -> log.info(" -> Email: [{}], Name: [{}], Password Hash: [{}]", u.getEmail(), u.getName(), u.getPassword()));
 

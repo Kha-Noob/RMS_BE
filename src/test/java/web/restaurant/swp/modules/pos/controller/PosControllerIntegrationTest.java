@@ -232,7 +232,7 @@ class PosControllerIntegrationTest {
     @WithMockUser(username = "cashier@liteflow.com", roles = {"CASHIER"})
     void getRooms_ShouldReturnEmptyList_WhenNoRoomsForBranch() throws Exception {
         when(userRepository.findByEmail("cashier@liteflow.com")).thenReturn(Optional.of(testUser));
-        when(roomRepository.findByBranchBranchId("branch-1")).thenReturn(List.of());
+        when(roomRepository.findByBranchBranchIdOrderByDisplayOrderAscIdAsc("branch-1")).thenReturn(List.of());
 
         mockMvc.perform(get("/api/pos/rooms"))
                 .andExpect(status().isOk())
@@ -244,7 +244,7 @@ class PosControllerIntegrationTest {
     @WithMockUser(username = "cashier@liteflow.com", roles = {"CASHIER"})
     void getRooms_ShouldReturnOk_WhenAuthenticated() throws Exception {
         when(userRepository.findByEmail("cashier@liteflow.com")).thenReturn(Optional.of(testUser));
-        when(roomRepository.findByBranchBranchId("branch-1")).thenReturn(List.of(testRoom));
+        when(roomRepository.findByBranchBranchIdOrderByDisplayOrderAscIdAsc("branch-1")).thenReturn(List.of(testRoom));
 
         mockMvc.perform(get("/api/pos/rooms"))
                 .andExpect(status().isOk())
