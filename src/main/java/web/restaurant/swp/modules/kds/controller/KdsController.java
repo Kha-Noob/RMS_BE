@@ -78,27 +78,72 @@ public class KdsController {
     }
 
     @PostMapping("/api/kds/status")
-    public ResponseEntity<?> updateKdsStatus(@RequestParam Long detailId, @RequestParam String status) {
+    public ResponseEntity<?> updateKdsStatus(
+            @RequestParam(required = false) Long detailId,
+            @RequestParam(required = false) Long orderId,
+            @RequestParam String status) {
         try {
-            OrderDetail detail = orderDetailRepository.findById(detailId)
-                    .orElseThrow(() -> new RuntimeException("Detail not found"));
+            if (detailId != null) {
+                OrderDetail detail = orderDetailRepository.findById(detailId)
+                        .orElseThrow(() -> new RuntimeException("Detail not found"));
 
-            String entityBranchId = detail.getOrder().getBranchId();
-            BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
-            branchAccessService.validateEntityBranch(entityBranchId, error);
-            if (error.hasError()) return error.toResponse();
+                String entityBranchId = detail.getOrder().getBranchId();
+                BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+                branchAccessService.validateEntityBranch(entityBranchId, error);
+                if (error.hasError()) return error.toResponse();
 
-            detail.setStatus(status);
-            orderDetailRepository.save(detail);
+                detail.setStatus(status);
+                orderDetailRepository.save(detail);
 
-            if ("SERVED".equalsIgnoreCase(status)) {
-                inventoryService.deductStockForOrderDetail(detail);
-            }
+                if ("SERVED".equalsIgnoreCase(status)) {
+                    inventoryService.deductStockForOrderDetail(detail);
+                }
 
-            if ("READY".equalsIgnoreCase(status)) {
-                KdsWebSocketHandler.broadcast("KDS_READY_ALERT:" + detail.getOrder().getSession().getTable().getName());
+                // Aggregate and roll up state to parent Order
+                Order order = detail.getOrder();
+                List<OrderDetail> allDetails = orderDetailRepository.findByOrderId(order.getId());
+                boolean allReady = allDetails.stream().allMatch(d -> "READY".equalsIgnoreCase(d.getStatus()) || "SERVED".equalsIgnoreCase(d.getStatus()));
+                boolean anyCooking = allDetails.stream().anyMatch(d -> "COOKING".equalsIgnoreCase(d.getStatus()));
+                if (allReady) {
+                    order.setStatus("READY");
+                } else if (anyCooking) {
+                    order.setStatus("COOKING");
+                }
+                orderRepository.save(order);
+
+                if ("READY".equalsIgnoreCase(status)) {
+                    KdsWebSocketHandler.broadcast("KDS_READY_ALERT:" + order.getSession().getTable().getName());
+                } else {
+                    KdsWebSocketHandler.broadcast("ORDER_STATE_CHANGED");
+                }
+            } else if (orderId != null) {
+                Order order = orderRepository.findById(orderId)
+                        .orElseThrow(() -> new RuntimeException("Order not found"));
+
+                String entityBranchId = order.getBranchId();
+                BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+                branchAccessService.validateEntityBranch(entityBranchId, error);
+                if (error.hasError()) return error.toResponse();
+
+                order.setStatus(status);
+                orderRepository.save(order);
+
+                List<OrderDetail> details = orderDetailRepository.findByOrderId(orderId);
+                for (OrderDetail d : details) {
+                    d.setStatus(status);
+                    orderDetailRepository.save(d);
+                    if ("SERVED".equalsIgnoreCase(status)) {
+                        inventoryService.deductStockForOrderDetail(d);
+                    }
+                }
+
+                if ("READY".equalsIgnoreCase(status)) {
+                    KdsWebSocketHandler.broadcast("KDS_READY_ALERT:" + order.getSession().getTable().getName());
+                } else {
+                    KdsWebSocketHandler.broadcast("ORDER_STATE_CHANGED");
+                }
             } else {
-                KdsWebSocketHandler.broadcast("ORDER_STATE_CHANGED");
+                return ResponseEntity.badRequest().body("Either detailId or orderId must be provided");
             }
             return ResponseEntity.ok().build();
         } catch (Exception e) {

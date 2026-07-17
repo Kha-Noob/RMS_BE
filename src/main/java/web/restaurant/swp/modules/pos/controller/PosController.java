@@ -764,6 +764,47 @@ public class PosController {
         }
     }
 
+    private List<Map<String, Object>> enrichTables(List<TableEntity> list) {
+        List<Map<String, Object>> response = new ArrayList<>();
+        for (TableEntity t : list) {
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("id", t.getId());
+            map.put("name", t.getName());
+            map.put("capacity", t.getCapacity());
+            map.put("status", t.getStatus());
+            map.put("guestCount", t.getGuestCount());
+            map.put("tableStyle", t.getTableStyle());
+            map.put("shape", t.getShape());
+            if (t.getRoom() != null) {
+                map.put("room", Map.of("id", t.getRoom().getId(), "name", t.getRoom().getName()));
+            } else {
+                map.put("room", null);
+            }
+
+            Optional<TableSession> sessionOpt = tableSessionRepository.findByTableIdAndStatus(t.getId(), "ACTIVE");
+            if (sessionOpt.isPresent()) {
+                TableSession session = sessionOpt.get();
+                map.put("activeSessionId", session.getId());
+                map.put("sessionOpenedAt", session.getCheckInTime() != null ? session.getCheckInTime().toString() : null);
+
+                List<Order> orders = orderRepository.findBySessionId(session.getId());
+                double total = 0.0;
+                for (Order o : orders) {
+                    if ("PENDING".equalsIgnoreCase(o.getStatus()) || "SENT".equalsIgnoreCase(o.getStatus()) || "SERVED".equalsIgnoreCase(o.getStatus())) {
+                        total += o.getTotalAmount() != null ? o.getTotalAmount() : 0.0;
+                    }
+                }
+                map.put("sessionTotalAmount", total);
+            } else {
+                map.put("activeSessionId", null);
+                map.put("sessionOpenedAt", null);
+                map.put("sessionTotalAmount", 0.0);
+            }
+            response.add(map);
+        }
+        return response;
+    }
+
     @GetMapping("/api/pos/tables")
     public ResponseEntity<?> getTables(@RequestParam(required = false) Long roomId) {
         try {
@@ -777,10 +818,10 @@ public class PosController {
                 if (!room.getBranch().getBranchId().equals(branchId)) {
                     return message(403, "You do not have access to this branch");
                 }
-                return ResponseEntity.ok(tableRepository.findByRoomIdOrderByIdAsc(roomId));
+                return ResponseEntity.ok(enrichTables(tableRepository.findByRoomIdOrderByIdAsc(roomId)));
             }
 
-            return ResponseEntity.ok(tableRepository.findByRoomBranchBranchIdOrderByRoomDisplayOrderAscIdAsc(branchId));
+            return ResponseEntity.ok(enrichTables(tableRepository.findByRoomBranchBranchIdOrderByRoomDisplayOrderAscIdAsc(branchId)));
         } catch (NoSuchElementException e) {
             return message(404, "Không tìm thấy dữ liệu");
         } catch (Exception e) {
