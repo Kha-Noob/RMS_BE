@@ -18,7 +18,8 @@ import web.restaurant.swp.modules.inventory.repository.ProductRepository;
 import web.restaurant.swp.modules.inventory.repository.ProductVariantRepository;
 import web.restaurant.swp.modules.branch.model.BankSetting;
 import web.restaurant.swp.modules.branch.repository.BankSettingRepository;
-import web.restaurant.swp.modules.tenant.model.Tenant;
+import web.restaurant.swp.modules.pos.repository.TableSessionRepository;
+import web.restaurant.swp.modules.pos.model.TableSession;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -37,6 +38,7 @@ public class BookingController {
     private final EventRepository eventRepository;
     private final BankSettingRepository bankSettingRepository;
     private final web.restaurant.swp.util.PayOSHelper payOSHelper;
+    private final TableSessionRepository tableSessionRepository;
 
     /**
      * Get all active branches for reservation.
@@ -137,7 +139,20 @@ public class BookingController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime time) {
         try {
             List<Long> bookedTableIds = bookingService.getBookedTableIds(branchId, time);
-            return ResponseEntity.ok(Map.of("bookedTableIds", bookedTableIds));
+            
+            // Fetch all currently occupied tables with their check-in times formatted
+            List<TableSession> activeSessions = tableSessionRepository.findByTableRoomBranchBranchIdAndStatus(branchId, "ACTIVE");
+            Map<Long, String> occupiedTimes = new HashMap<>();
+            for (TableSession s : activeSessions) {
+                if (s.getCheckInTime() != null) {
+                    occupiedTimes.put(s.getTable().getId(), s.getCheckInTime().toString());
+                }
+            }
+            
+            return ResponseEntity.ok(Map.of(
+                "bookedTableIds", bookedTableIds,
+                "occupiedTables", occupiedTimes
+            ));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
