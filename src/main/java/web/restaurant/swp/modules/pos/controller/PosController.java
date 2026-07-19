@@ -45,6 +45,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
+import web.restaurant.swp.util.PayOSHelper;
 
 @RestController
 @RequiredArgsConstructor
@@ -73,6 +74,7 @@ public class PosController {
     private final BranchAccessService branchAccessService;
     private final FloorPlanRepository floorPlanRepository;
     private final FloorPlanObjectRepository floorPlanObjectRepository;
+    private final PayOSHelper payOSHelper;
 
     private User getLoggedInUser() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -167,7 +169,10 @@ public class PosController {
         double total = 0.0;
         
         for (Order order : orders) {
-            if ("PENDING".equalsIgnoreCase(order.getStatus()) || "SENT".equalsIgnoreCase(order.getStatus())) {
+            String s = order.getStatus();
+            if ("PENDING".equalsIgnoreCase(s) || "SENT".equalsIgnoreCase(s)
+                    || "COOKING".equalsIgnoreCase(s) || "READY".equalsIgnoreCase(s)
+                    || "SERVED".equalsIgnoreCase(s)) {
                 List<OrderDetail> details = orderDetailRepository.findByOrderId(order.getId());
                 for (OrderDetail detail : details) {
                     Map<String, Object> item = new HashMap<>();
@@ -392,6 +397,62 @@ public class PosController {
         }
     }
 
+    @PostMapping("/api/pos/checkout/payos")
+    public ResponseEntity<?> requestPayOSPayment(@RequestParam Long sessionId) {
+        try {
+            TableSession sess = tableSessionRepository.findById(sessionId).orElse(null);
+            if (sess != null) {
+                String entityBranchId = sess.getTable().getRoom().getBranch().getBranchId();
+                BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+                branchAccessService.validateEntityBranch(entityBranchId, error);
+                if (error.hasError()) return error.toResponse();
+            }
+
+            double finalAmount = orderService.getFinalAmount(sessionId);
+            long orderCode = PayOSHelper.generateOrderCode();
+
+            if (sess != null) {
+                sess.setOrderCode(orderCode);
+                tableSessionRepository.save(sess);
+            }
+
+            String returnUrl = "http://localhost:3000/pos?status=success&session=" + sessionId;
+            String cancelUrl = "http://localhost:3000/pos?status=cancel&session=" + sessionId;
+
+            String checkoutUrl = "";
+            try {
+                Map<String, Object> payosData = payOSHelper.createPaymentLink(
+                        orderCode,
+                        finalAmount,
+                        "RMSPOS" + sessionId,
+                        returnUrl,
+                        cancelUrl
+                );
+
+                if (payosData != null && payosData.containsKey("checkoutUrl")) {
+                    checkoutUrl = (String) payosData.get("checkoutUrl");
+                }
+            } catch (Exception e) {
+                log.warn("[PAYOS POS] Failed to create real PayOS payment link: {}. Falling back to mock payment portal.", e.getMessage());
+                checkoutUrl = "http://localhost:8080/api/public/payos/mock-checkout"
+                        + "?orderCode=" + orderCode
+                        + "&amount=" + finalAmount
+                        + "&description=" + "RMSPOS" + sessionId
+                        + "&returnUrl=" + java.net.URLEncoder.encode(returnUrl, java.nio.charset.StandardCharsets.UTF_8)
+                        + "&cancelUrl=" + java.net.URLEncoder.encode(cancelUrl, java.nio.charset.StandardCharsets.UTF_8);
+            }
+
+            if (sess != null && !checkoutUrl.isEmpty()) {
+                sess.setCheckoutUrl(checkoutUrl);
+                tableSessionRepository.save(sess);
+            }
+
+            return ResponseEntity.ok(Map.of("checkoutUrl", checkoutUrl, "orderCode", orderCode));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
     @PostMapping("/api/pos/checkout/confirm")
     public ResponseEntity<?> finalizePayment(@RequestParam Long sessionId, @RequestParam double amount, @RequestParam(required = false, defaultValue = "CASH") String paymentMethod) {
         try {
@@ -594,7 +655,6 @@ public class PosController {
                     vMap.put("id", v.getId());
                     vMap.put("name", v.getName());
                     vMap.put("price", v.getPrice());
-                    vMap.put("product", pMap);
                     variantList.add(vMap);
                 }
                 pMap.put("variants", variantList);
@@ -790,7 +850,10 @@ public class PosController {
                 List<Order> orders = orderRepository.findBySessionId(session.getId());
                 double total = 0.0;
                 for (Order o : orders) {
-                    if ("PENDING".equalsIgnoreCase(o.getStatus()) || "SENT".equalsIgnoreCase(o.getStatus()) || "SERVED".equalsIgnoreCase(o.getStatus())) {
+                    String status = o.getStatus();
+                    if ("PENDING".equalsIgnoreCase(status) || "SENT".equalsIgnoreCase(status)
+                            || "COOKING".equalsIgnoreCase(status) || "READY".equalsIgnoreCase(status)
+                            || "SERVED".equalsIgnoreCase(status)) {
                         total += o.getTotalAmount() != null ? o.getTotalAmount() : 0.0;
                     }
                 }

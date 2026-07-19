@@ -287,4 +287,40 @@ class PosControllerIntegrationTest {
 
         verify(orderService).confirmPayment(1L, 190000.0, "CASH");
     }
+
+    @Test
+    @WithMockUser(username = "cashier@liteflow.com", roles = {"CASHIER"})
+    void getActiveSession_ShouldIncludeCookingAndReadyOrders_WhenStatusChanged() throws Exception {
+        when(userRepository.findByEmail("cashier@liteflow.com")).thenReturn(Optional.of(testUser));
+        when(tableSessionRepository.findByTableIdAndStatus(1L, "ACTIVE")).thenReturn(Optional.of(testSession));
+
+        Product product = Product.builder().id(101L).name("Bún Chả Hà Nội").build();
+        ProductVariant variant = ProductVariant.builder().id(201L).name("Lớn").product(product).price(75000.0).build();
+
+        Order cookingOrder = Order.builder()
+                .id(10L)
+                .session(testSession)
+                .status("COOKING")
+                .totalAmount(75000.0)
+                .build();
+
+        OrderDetail detail = OrderDetail.builder()
+                .id(1L)
+                .order(cookingOrder)
+                .variant(variant)
+                .quantity(1)
+                .price(75000.0)
+                .status("COOKING")
+                .build();
+
+        when(orderRepository.findBySessionId(1L)).thenReturn(List.of(cookingOrder));
+        when(orderDetailRepository.findByOrderId(10L)).thenReturn(List.of(detail));
+
+        mockMvc.perform(get("/api/pos/session/active")
+                        .param("tableId", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].productName").value("Bún Chả Hà Nội"))
+                .andExpect(jsonPath("$.items[0].status").value("COOKING"))
+                .andExpect(jsonPath("$.total").value(75000.0));
+    }
 }

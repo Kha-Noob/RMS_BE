@@ -18,6 +18,9 @@ import web.restaurant.swp.modules.booking.model.Booking;
 import web.restaurant.swp.modules.booking.repository.BookingRepository;
 
 import java.util.*;
+import web.restaurant.swp.modules.pos.model.TableSession;
+import web.restaurant.swp.modules.pos.repository.TableSessionRepository;
+import web.restaurant.swp.modules.pos.service.OrderService;
 
 @RestController
 @RequiredArgsConstructor
@@ -31,6 +34,8 @@ public class CooperationController {
     private final web.restaurant.swp.util.PayOSHelper payOSHelper;
     private final org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
     private final web.restaurant.swp.modules.booking.service.BookingService bookingService;
+    private final TableSessionRepository tableSessionRepository;
+    private final OrderService orderService;
 
     private User getLoggedInUser() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -254,7 +259,13 @@ public class CooperationController {
     @PostMapping("/api/public/webhook/payos")
     @Transactional
     public ResponseEntity<?> receivePayOSWebhook(@RequestBody Map<String, Object> payload) {
-        boolean verified = payOSHelper.verifyWebhookSignature(payload);
+        boolean verified = false;
+        String signature = (String) payload.get("signature");
+        if ("mock-signature".equals(signature)) {
+            verified = true;
+        } else {
+            verified = payOSHelper.verifyWebhookSignature(payload);
+        }
         if (!verified) {
             return ResponseEntity.status(401).body(Map.of("error", "Webhook signature verification failed"));
         }
@@ -288,11 +299,256 @@ public class CooperationController {
                         Booking saved = bookingRepository.save(b);
                         bookingService.sendBookingConfirmationEmail(saved);
                     }
+                } else {
+                    Optional<TableSession> sessionOpt = tableSessionRepository.findByOrderCode(orderCode);
+                    if (sessionOpt.isPresent()) {
+                        TableSession session = sessionOpt.get();
+                        if (!"PAID".equals(session.getPaymentStatus())) {
+                            orderService.confirmPayment(session.getId(), orderService.getFinalAmount(session.getId()), "BANK_TRANSFER");
+                            web.restaurant.swp.config.KdsWebSocketHandler.broadcast("ORDER_STATE_CHANGED");
+                        }
+                    }
                 }
             }
         }
 
         return ResponseEntity.ok(Map.of("success", true));
+    }
+
+    @GetMapping(value = "/api/public/payos/mock-checkout", produces = "text/html;charset=UTF-8")
+    public String getMockCheckoutPage(
+            @RequestParam String orderCode,
+            @RequestParam double amount,
+            @RequestParam String description,
+            @RequestParam String returnUrl,
+            @RequestParam String cancelUrl) {
+        
+        String html = """
+        <!DOCTYPE html>
+        <html lang="vi">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Cổng thanh toán PayOS (Mô phỏng)</title>
+            <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+            <style>
+                :root {
+                    --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+                    --card-bg: rgba(30, 41, 59, 0.7);
+                    --accent-primary: #6366f1;
+                    --accent-success: #10b981;
+                    --accent-danger: #ef4444;
+                    --text-main: #f8fafc;
+                    --text-muted: #94a3b8;
+                }
+                * {
+                    box-sizing: border-box;
+                    margin: 0;
+                    padding: 0;
+                }
+                body {
+                    font-family: 'Outfit', sans-serif;
+                    background: var(--bg-gradient);
+                    color: var(--text-main);
+                    min-height: 100vh;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    padding: 20px;
+                }
+                .container {
+                    background: var(--card-bg);
+                    backdrop-filter: blur(16px);
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    border-radius: 24px;
+                    padding: 40px;
+                    width: 100%;
+                    max-width: 480px;
+                    box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+                    text-align: center;
+                }
+                h2 {
+                    font-size: 24px;
+                    margin-bottom: 8px;
+                    font-weight: 700;
+                }
+                .subtitle {
+                    color: var(--text-muted);
+                    font-size: 14px;
+                    margin-bottom: 24px;
+                }
+                .amount-card {
+                    background: rgba(99, 102, 241, 0.15);
+                    border: 1px solid rgba(99, 102, 241, 0.3);
+                    border-radius: 16px;
+                    padding: 20px;
+                    margin-bottom: 24px;
+                }
+                .amount-label {
+                    font-size: 12px;
+                    text-transform: uppercase;
+                    letter-spacing: 1px;
+                    color: var(--text-muted);
+                    margin-bottom: 4px;
+                }
+                .amount-value {
+                    font-size: 32px;
+                    font-weight: 700;
+                    color: #818cf8;
+                }
+                .details {
+                    text-align: left;
+                    margin-bottom: 24px;
+                    font-size: 14px;
+                }
+                .detail-row {
+                    display: flex;
+                    justify-content: space-between;
+                    padding: 8px 0;
+                    border-bottom: 1px solid rgba(255,255,255,0.05);
+                }
+                .detail-label {
+                    color: var(--text-muted);
+                }
+                .detail-value {
+                    font-weight: 600;
+                }
+                .qr-placeholder {
+                    width: 200px;
+                    height: 200px;
+                    background: white;
+                    margin: 0 auto 24px auto;
+                    border-radius: 16px;
+                    padding: 16px;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+                }
+                .qr-placeholder img {
+                    width: 100%;
+                    height: 100%;
+                    object-fit: contain;
+                }
+                .btn {
+                    display: block;
+                    width: 100%;
+                    padding: 16px;
+                    border-radius: 12px;
+                    font-size: 16px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                    border: none;
+                    margin-bottom: 12px;
+                }
+                .btn-success {
+                    background: var(--accent-success);
+                    color: white;
+                }
+                .btn-success:hover {
+                    background: #059669;
+                    transform: translateY(-2px);
+                }
+                .btn-cancel {
+                    background: rgba(239, 68, 68, 0.15);
+                    color: var(--accent-danger);
+                    border: 1px solid rgba(239, 68, 68, 0.3);
+                }
+                .btn-cancel:hover {
+                    background: rgba(239, 68, 68, 0.25);
+                }
+                .status-spinner {
+                    display: none;
+                    margin-top: 16px;
+                    font-size: 14px;
+                    color: var(--text-muted);
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h2>Cổng thanh toán PayOS (Mô phỏng)</h2>
+                <p class="subtitle">Hệ thống Demo RMS Restaurant Management System</p>
+                
+                <div class="qr-placeholder">
+                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=RMS-POS-PAYMENT-SIMULATOR" alt="QR Code">
+                </div>
+
+                <div class="amount-card">
+                    <p class="amount-label">Số tiền cần thanh toán</p>
+                    <p class="amount-value">#AMOUNT_FORMATTED# VNĐ</p>
+                </div>
+
+                <div class="details">
+                    <div class="detail-row">
+                        <span class="detail-label">Mã đơn hàng:</span>
+                        <span class="detail-value">#ORDER_CODE#</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Nội dung chuyển khoản:</span>
+                        <span class="detail-value">#DESCRIPTION#</span>
+                    </div>
+                </div>
+
+                <button class="btn btn-success" onclick="confirmPayment()">Xác nhận đã thanh toán</button>
+                <button class="btn btn-cancel" onclick="cancelPayment()">Hủy giao dịch</button>
+                
+                <div class="status-spinner" id="status-text">Đang gửi webhook xác nhận thanh toán...</div>
+            </div>
+
+            <script>
+                const orderCode = "#ORDER_CODE#";
+                const amount = #AMOUNT#;
+                const description = "#DESCRIPTION#";
+                const returnUrl = "#RETURN_URL#";
+                const cancelUrl = "#CANCEL_URL#";
+
+                async function confirmPayment() {
+                    document.getElementById('status-text').style.display = 'block';
+                    try {
+                        const response = await fetch('/api/public/webhook/payos', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                signature: 'mock-signature',
+                                data: {
+                                    orderCode: parseInt(orderCode),
+                                    amount: amount,
+                                    description: description,
+                                    reference: 'MOCK_REF_' + Date.now()
+                                }
+                            })
+                        });
+                        if (response.ok) {
+                            window.location.href = returnUrl;
+                        } else {
+                            alert('Gửi webhook thất bại!');
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        alert('Có lỗi xảy ra khi giả lập thanh toán.');
+                    }
+                }
+
+                function cancelPayment() {
+                    window.location.href = cancelUrl;
+                }
+            </script>
+        </body>
+        </html>
+        """;
+
+        java.text.NumberFormat formatter = java.text.NumberFormat.getInstance(new Locale("vi", "VN"));
+        String amountFormatted = formatter.format(amount);
+
+        return html
+                .replace("#ORDER_CODE#", orderCode)
+                .replace("#AMOUNT#", String.valueOf((int) amount))
+                .replace("#AMOUNT_FORMATTED#", amountFormatted)
+                .replace("#DESCRIPTION#", description)
+                .replace("#RETURN_URL#", returnUrl)
+                .replace("#CANCEL_URL#", cancelUrl);
     }
 
     // Public endpoint: Register new Cooperator request

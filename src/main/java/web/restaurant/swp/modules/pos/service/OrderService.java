@@ -99,17 +99,27 @@ public class OrderService {
                     return orderRepository.save(o);
                 });
 
-        // Add detail
-        OrderDetail detail = OrderDetail.builder()
-                .order(activeOrder)
-                .variant(variant)
-                .quantity(quantity)
-                .status("PENDING")
-                .notes(notes)
-                .price(variant.getPrice())
-                .build();
+        // Add detail - Aggregate if already exists in PENDING state with same variant and notes
+        String cleanNotes = notes == null ? "" : notes.trim();
+        Optional<OrderDetail> existingDetailOpt = orderDetailRepository.findDuplicatePendingDetail(
+                activeOrder.getId(), variantId, "PENDING", cleanNotes);
 
-        detail = orderDetailRepository.save(detail);
+        OrderDetail detail;
+        if (existingDetailOpt.isPresent()) {
+            detail = existingDetailOpt.get();
+            detail.setQuantity(detail.getQuantity() + quantity);
+            detail = orderDetailRepository.save(detail);
+        } else {
+            detail = OrderDetail.builder()
+                    .order(activeOrder)
+                    .variant(variant)
+                    .quantity(quantity)
+                    .status("PENDING")
+                    .notes(notes)
+                    .price(variant.getPrice())
+                    .build();
+            detail = orderDetailRepository.save(detail);
+        }
 
         // Update order total
         double orderTotal = orderDetailRepository.findByOrderId(activeOrder.getId()).stream()
@@ -222,9 +232,8 @@ public class OrderService {
         log.info("Ghép hóa đơn từ Session {} vào Session {}", sourceSessionId, targetSessionId);
     }
 
-    // REQ-POS-08: Checkout & VNPay QR sandbox integration
-    @Transactional
-    public String generateVNPayQR(Long sessionId) {
+    @Transactional(readOnly = true)
+    public double getFinalAmount(Long sessionId) {
         TableSession session = tableSessionRepository.findById(sessionId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy phiên bàn cần thanh toán."));
         
@@ -247,8 +256,13 @@ public class OrderService {
             discountAmount = billAmount * tierDiscountRate;
         }
 
-        double finalAmount = Math.max(0.0, billAmount - discountAmount);
+        return Math.max(0.0, billAmount - discountAmount);
+    }
 
+    // REQ-POS-08: Checkout & VNPay QR sandbox integration
+    @Transactional
+    public String generateVNPayQR(Long sessionId) {
+        double finalAmount = getFinalAmount(sessionId);
         // Sandbox simulated checkout link or QR code string
         // We'll return a payload to render a mock QR Scanner Modal in UI
         return "VNPAY-QR;Invoice#" + sessionId + ";Amount:" + finalAmount;
