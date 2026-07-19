@@ -131,6 +131,8 @@ public class SecurityConfig {
                 .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "MANAGER", "COOPERATOR")
                 .requestMatchers("/api/hr/**").hasAnyRole("ADMIN", "MANAGER", "HR")
                 .requestMatchers("/api/pos/branch-admins/**").hasAnyRole("ADMIN", "COOPERATOR")
+                .requestMatchers("/api/branches/my-branches", "/api/branches/select", "/api/branch/select").authenticated()
+                .requestMatchers("/api/branches/*/floor-plans").hasAnyRole("ADMIN", "COOPERATOR", "MANAGER", "CASHIER", "EMPLOYEE", "KITCHEN", "CHEF")
                 .requestMatchers("/api/branches/**").hasAnyRole("ADMIN", "COOPERATOR")
                 .requestMatchers("/api/pos/**").hasAnyRole("ADMIN", "COOPERATOR", "MANAGER", "CASHIER", "EMPLOYEE", "KITCHEN", "CHEF")
                 .requestMatchers("/api/floor-plans/**").hasAnyRole("ADMIN", "MANAGER", "CASHIER", "EMPLOYEE", "KITCHEN", "CHEF")

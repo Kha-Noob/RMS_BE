@@ -41,7 +41,7 @@ public class KdsController {
             List<Order> activeOrders = orders.stream()
                     .filter(o -> {
                         String s = o.getStatus();
-                        return "PENDING".equalsIgnoreCase(s) || "SENT".equalsIgnoreCase(s)
+                        return "SENT".equalsIgnoreCase(s)
                                 || "COOKING".equalsIgnoreCase(s) || "READY".equalsIgnoreCase(s);
                     })
                     .sorted((a, b) -> b.getOrderDate().compareTo(a.getOrderDate()))
@@ -59,14 +59,16 @@ public class KdsController {
                 List<OrderDetail> details = orderDetailRepository.findByOrderId(order.getId());
                 List<Map<String, Object>> detailList = new ArrayList<>();
                 for (OrderDetail d : details) {
-                    Map<String, Object> dMap = new HashMap<>();
-                    dMap.put("id", d.getId());
-                    dMap.put("variantName", d.getVariant() != null ? d.getVariant().getName() : "");
-                    dMap.put("productName", d.getVariant() != null && d.getVariant().getProduct() != null ? d.getVariant().getProduct().getName() : "");
-                    dMap.put("quantity", d.getQuantity());
-                    dMap.put("notes", d.getNotes() != null ? d.getNotes() : "");
-                    dMap.put("status", d.getStatus());
-                    detailList.add(dMap);
+                    if ("SENT".equalsIgnoreCase(d.getStatus()) || "COOKING".equalsIgnoreCase(d.getStatus()) || "READY".equalsIgnoreCase(d.getStatus())) {
+                        Map<String, Object> dMap = new HashMap<>();
+                        dMap.put("id", d.getId());
+                        dMap.put("variantName", d.getVariant() != null ? d.getVariant().getName() : "");
+                        dMap.put("productName", d.getVariant() != null && d.getVariant().getProduct() != null ? d.getVariant().getProduct().getName() : "");
+                        dMap.put("quantity", d.getQuantity());
+                        dMap.put("notes", d.getNotes() != null ? d.getNotes() : "");
+                        dMap.put("status", d.getStatus());
+                        detailList.add(dMap);
+                    }
                 }
                 oMap.put("items", detailList);
                 result.add(oMap);

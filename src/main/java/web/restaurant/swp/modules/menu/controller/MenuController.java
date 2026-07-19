@@ -79,6 +79,18 @@ public class MenuController {
         }
     }
 
+    @DeleteMapping("/bulk")
+    public ResponseEntity<?> deleteMenuItemsBulk(@RequestBody List<Long> ids) {
+        try {
+            for (Long id : ids) {
+                menuService.deleteMenuItem(id);
+            }
+            return ResponseEntity.ok(Map.of("message", "Đã xóa các món ăn thành công"));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
     // ─── Categories ────────────────────────────────────────────────────────
 
     @GetMapping("/categories")
