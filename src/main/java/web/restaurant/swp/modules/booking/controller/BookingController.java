@@ -20,6 +20,7 @@ import web.restaurant.swp.modules.branch.model.BankSetting;
 import web.restaurant.swp.modules.branch.repository.BankSettingRepository;
 import web.restaurant.swp.modules.pos.repository.TableSessionRepository;
 import web.restaurant.swp.modules.pos.model.TableSession;
+import web.restaurant.swp.modules.tenant.model.Tenant;
 
 import java.time.LocalDateTime;
 import java.util.*;

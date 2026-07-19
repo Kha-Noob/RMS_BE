@@ -37,6 +37,108 @@ public class DataSeeder implements CommandLineRunner {
             log.info("Test profile active - skipping database seeding.");
             return;
         }
+
+        // Align product names and variants with menu items
+        log.info("====== Aligning database product names and variants with menu items ======");
+        try {
+            // 1. Update product names to match menu names exactly
+            jdbcTemplate.execute("UPDATE products SET name = 'Cơm Tấm Sườn Nướng' WHERE id = 1");
+            jdbcTemplate.execute("UPDATE products SET name = 'Gỏi Cuốn' WHERE id = 3");
+            jdbcTemplate.execute("UPDATE products SET name = 'Phở Bò' WHERE id = 18");
+            jdbcTemplate.execute("UPDATE products SET name = 'Bún Bò Huế' WHERE id = 19");
+            jdbcTemplate.execute("UPDATE products SET name = 'Lẩu Thái Hải Sản' WHERE id = 25");
+            jdbcTemplate.execute("UPDATE products SET name = 'Nem Rán' WHERE id = 28");
+            jdbcTemplate.execute("UPDATE products SET name = 'Bánh Flan Caramel' WHERE id = 12");
+
+            // 2. Update variant names to match menu variants exactly
+            jdbcTemplate.execute("UPDATE product_variants SET name = 'Sườn nướng' WHERE id = 1");
+            jdbcTemplate.execute("UPDATE product_variants SET name = 'Sườn + bì' WHERE id = 2");
+            jdbcTemplate.execute("UPDATE product_variants SET name = 'Cà phê đen' WHERE id = 9");
+            jdbcTemplate.execute("UPDATE product_variants SET name = 'Cà phê sữa' WHERE id = 10");
+            jdbcTemplate.execute("UPDATE product_variants SET name = 'Phở tái' WHERE id = 26");
+            jdbcTemplate.execute("UPDATE product_variants SET name = 'Phở chín' WHERE id = 27");
+            jdbcTemplate.execute("UPDATE product_variants SET name = 'Lẩu cho 2 người' WHERE id = 40");
+            jdbcTemplate.execute("UPDATE product_variants SET name = 'Lẩu cho 4 người' WHERE id = 41");
+
+            // 3. Insert missing products
+            jdbcTemplate.execute("INSERT INTO products (id, name, description, image_path, category_id, is_active, tenant_id) VALUES " +
+                    "(31, 'Bánh Xèo', 'Bánh xèo giòn rụm, nhân tôm thịt, giá đỗ, ăn kèm rau sống và nước chấm.', 'https://images.unsplash.com/photo-1551024601-bec78aea704b?w=500', 1, true, 'tenant-1') " +
+                    "ON CONFLICT (id) DO NOTHING");
+            jdbcTemplate.execute("INSERT INTO products (id, name, description, image_path, category_id, is_active, tenant_id) VALUES " +
+                    "(32, 'Cá Kho Tộ', 'Cá basa kho tộ caramel, thịt ba chỉ, ăn với cơm trắng.', 'https://images.unsplash.com/photo-1547592165-e1d17fed6005?w=500', 1, true, 'tenant-1') " +
+                    "ON CONFLICT (id) DO NOTHING");
+            jdbcTemplate.execute("INSERT INTO products (id, name, description, image_path, category_id, is_active, tenant_id) VALUES " +
+                    "(33, 'Chả Giò', 'Chả giò chiên giòn, nhân tôm thịt, ăn kèm rau sống.', 'https://images.unsplash.com/photo-1544025162-d76694265947?w=500', 4, true, 'tenant-1') " +
+                    "ON CONFLICT (id) DO NOTHING");
+            jdbcTemplate.execute("INSERT INTO products (id, name, description, image_path, category_id, is_active, tenant_id) VALUES " +
+                    "(34, 'Rau Muống Xào Tỏi', 'Rau muống xào tỏi, món ăn kèm thanh mát.', 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=500', 4, true, 'tenant-1') " +
+                    "ON CONFLICT (id) DO NOTHING");
+            jdbcTemplate.execute("INSERT INTO products (id, name, description, image_path, category_id, is_active, tenant_id) VALUES " +
+                    "(35, 'Đậu Hũ Chiên Sả Ớt', 'Đậu hũ chiên giòn, sốt sả ớt cay nồng.', 'https://images.unsplash.com/photo-1573080496219-bb080dd4f877?w=500', 4, true, 'tenant-1') " +
+                    "ON CONFLICT (id) DO NOTHING");
+            jdbcTemplate.execute("INSERT INTO products (id, name, description, image_path, category_id, is_active, tenant_id) VALUES " +
+                    "(36, 'Trà Đá', 'Trà đá truyền thống, refreshing sau bữa ăn.', 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=500', 2, true, 'tenant-1') " +
+                    "ON CONFLICT (id) DO NOTHING");
+            jdbcTemplate.execute("INSERT INTO products (id, name, description, image_path, category_id, is_active, tenant_id) VALUES " +
+                    "(37, 'Nước Chanh Tươi', 'Nước chanh tươi vắt, đường, đá, giải khát.', 'https://images.unsplash.com/photo-1589733901241-5e5148685df5?w=500', 2, true, 'tenant-1') " +
+                    "ON CONFLICT (id) DO NOTHING");
+            jdbcTemplate.execute("INSERT INTO products (id, name, description, image_path, category_id, is_active, tenant_id) VALUES " +
+                    "(38, 'Bia Sài Gòn', 'Bia Sài Gòn đặc biệt, 330ml.', 'https://images.unsplash.com/photo-1576092768241-dec231879fc3?w=500', 2, true, 'tenant-1') " +
+                    "ON CONFLICT (id) DO NOTHING");
+            jdbcTemplate.execute("INSERT INTO products (id, name, description, image_path, category_id, is_active, tenant_id) VALUES " +
+                    "(39, 'Chè Ba Màu', 'Chè ba màu: đậu xanh, đậu đỏ, thạch, nước cốt dừa.', 'https://images.unsplash.com/photo-1563729784474-d77dbb933a9e?w=500', 3, true, 'tenant-1') " +
+                    "ON CONFLICT (id) DO NOTHING");
+            jdbcTemplate.execute("INSERT INTO products (id, name, description, image_path, category_id, is_active, tenant_id) VALUES " +
+                    "(40, 'Kem Chuối', 'Kem chuối dừa, đậu phộng rang, topping socola.', 'https://images.unsplash.com/photo-1541795795328-f073b763494e?w=500', 3, true, 'tenant-1') " +
+                    "ON CONFLICT (id) DO NOTHING");
+
+            // 4. Insert missing product variants
+            jdbcTemplate.execute("INSERT INTO product_variants (id, product_id, name, price, original_price, sku, is_topping) VALUES " +
+                    "(51, 18, 'Phở gầu', 95000.0, 40000.0, 'SKU-18-G', false) " +
+                    "ON CONFLICT (id) DO NOTHING");
+            jdbcTemplate.execute("INSERT INTO product_variants (id, product_id, name, price, original_price, sku, is_topping) VALUES " +
+                    "(52, 31, 'Bánh Xèo', 65000.0, 30000.0, 'SKU-BX-STD', false) " +
+                    "ON CONFLICT (id) DO NOTHING");
+            jdbcTemplate.execute("INSERT INTO product_variants (id, product_id, name, price, original_price, sku, is_topping) VALUES " +
+                    "(53, 32, 'Cá Kho Tộ', 120000.0, 50000.0, 'SKU-CKT-STD', false) " +
+                    "ON CONFLICT (id) DO NOTHING");
+            jdbcTemplate.execute("INSERT INTO product_variants (id, product_id, name, price, original_price, sku, is_topping) VALUES " +
+                    "(54, 33, 'Chả Giò', 50000.0, 20000.0, 'SKU-CG-STD', false) " +
+                    "ON CONFLICT (id) DO NOTHING");
+            jdbcTemplate.execute("INSERT INTO product_variants (id, product_id, name, price, original_price, sku, is_topping) VALUES " +
+                    "(55, 34, 'Rau Muống Xào Tỏi', 40000.0, 15000.0, 'SKU-RMXT-STD', false) " +
+                    "ON CONFLICT (id) DO NOTHING");
+            jdbcTemplate.execute("INSERT INTO product_variants (id, product_id, name, price, original_price, sku, is_topping) VALUES " +
+                    "(56, 35, 'Đậu Hũ Chiên Sả Ớt', 45000.0, 18000.0, 'SKU-DHCSO-STD', false) " +
+                    "ON CONFLICT (id) DO NOTHING");
+            jdbcTemplate.execute("INSERT INTO product_variants (id, product_id, name, price, original_price, sku, is_topping) VALUES " +
+                    "(57, 36, 'Trà Đá', 15000.0, 2000.0, 'SKU-TD-STD', false) " +
+                    "ON CONFLICT (id) DO NOTHING");
+            jdbcTemplate.execute("INSERT INTO product_variants (id, product_id, name, price, original_price, sku, is_topping) VALUES " +
+                    "(58, 37, 'Nước Chanh Tươi', 25000.0, 8000.0, 'SKU-NCT-STD', false) " +
+                    "ON CONFLICT (id) DO NOTHING");
+            jdbcTemplate.execute("INSERT INTO product_variants (id, product_id, name, price, original_price, sku, is_topping) VALUES " +
+                    "(59, 38, 'Bia Sài Gòn', 25000.0, 12000.0, 'SKU-BSG-STD', false) " +
+                    "ON CONFLICT (id) DO NOTHING");
+            jdbcTemplate.execute("INSERT INTO product_variants (id, product_id, name, price, original_price, sku, is_topping) VALUES " +
+                    "(60, 38, 'Bia Hà Nội', 28000.0, 13000.0, 'SKU-BHN-STD', false) " +
+                    "ON CONFLICT (id) DO NOTHING");
+            jdbcTemplate.execute("INSERT INTO product_variants (id, product_id, name, price, original_price, sku, is_topping) VALUES " +
+                    "(61, 39, 'Chè Ba Màu', 35000.0, 15000.0, 'SKU-CBM-STD', false) " +
+                    "ON CONFLICT (id) DO NOTHING");
+            jdbcTemplate.execute("INSERT INTO product_variants (id, product_id, name, price, original_price, sku, is_topping) VALUES " +
+                    "(62, 40, 'Kem Chuối', 30000.0, 12000.0, 'SKU-KC-STD', false) " +
+                    "ON CONFLICT (id) DO NOTHING");
+
+            // 5. Reset sequence generators to avoid next value collisions
+            jdbcTemplate.execute("SELECT setval('products_id_seq', (SELECT COALESCE(MAX(id), 0) FROM products))");
+            jdbcTemplate.execute("SELECT setval('product_variants_id_seq', (SELECT COALESCE(MAX(id), 0) FROM product_variants))");
+
+            log.info("====== Database product names and variants aligned successfully! ======");
+        } catch (Exception e) {
+            log.error("Failed to align database product names and variants", e);
+        }
+
         if (roleRepository.count() > 0) {
             log.info("Database is already seeded.");
             return;

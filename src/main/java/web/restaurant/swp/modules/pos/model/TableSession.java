@@ -67,6 +67,12 @@ public class TableSession {
     @Column(name = "payment_method")
     private String paymentMethod; // CASH, BANK_TRANSFER
 
+    @Column(name = "order_code")
+    private Long orderCode;
+
+    @Column(name = "checkout_url", length = 1000)
+    private String checkoutUrl;
+
     @Builder.Default
     @Column(nullable = false)
     private String source = "WALK_IN"; // WALK_IN, ONLINE, OFFLINE

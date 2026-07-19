@@ -38,6 +38,13 @@ public interface OrderDetailRepository extends JpaRepository<OrderDetail, Long> 
     List<OrderDetail> findByOrderId(Long orderId);
     List<OrderDetail> findByOrderSessionId(Long sessionId);
 
+    @Query("SELECT od FROM OrderDetail od WHERE od.order.id = :orderId AND od.variant.id = :variantId AND od.status = :status AND (od.notes = :notes OR (od.notes IS NULL AND :notes = ''))")
+    Optional<OrderDetail> findDuplicatePendingDetail(
+            @org.springframework.data.repository.query.Param("orderId") Long orderId,
+            @org.springframework.data.repository.query.Param("variantId") Long variantId,
+            @org.springframework.data.repository.query.Param("status") String status,
+            @org.springframework.data.repository.query.Param("notes") String notes);
+
     @Query("SELECT od.variant.product.name, SUM(od.quantity) " +
            "FROM OrderDetail od " +
            "WHERE od.order.status = 'SERVED' AND od.order.branchId = :branchId " +

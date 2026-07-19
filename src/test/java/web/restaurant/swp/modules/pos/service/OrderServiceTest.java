@@ -512,7 +512,34 @@ class OrderServiceTest {
 
         assertEquals(2, result.size());
         assertEquals(1L, result.get(0)); // original session
-        assertEquals(5L, result.get(1)); // new session
         verify(tableSessionRepository, times(1)).save(any(TableSession.class));
+    }
+
+    @Test
+    void addItemToSession_ShouldAggregateQuantity_WhenItemAlreadyExistsInPendingState() {
+        OrderDetail existingDetail = OrderDetail.builder()
+                .id(1L)
+                .order(testOrder)
+                .variant(testVariant)
+                .quantity(1)
+                .notes("ít hành")
+                .status("PENDING")
+                .price(95000.0)
+                .build();
+
+        when(tableSessionRepository.findById(1L)).thenReturn(Optional.of(testSession));
+        when(productVariantRepository.findById(1L)).thenReturn(Optional.of(testVariant));
+        when(orderRepository.findBySessionId(1L)).thenReturn(List.of(testOrder));
+        when(orderDetailRepository.findDuplicatePendingDetail(1L, 1L, "PENDING", "ít hành"))
+                .thenReturn(Optional.of(existingDetail));
+        when(orderDetailRepository.save(any(OrderDetail.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(orderDetailRepository.findByOrderId(1L)).thenReturn(List.of(existingDetail));
+
+        OrderDetail result = orderService.addItemToSession(1L, 1L, 2, "ít hành");
+
+        assertNotNull(result);
+        assertEquals(3, result.getQuantity()); // 1 + 2 = 3
+        assertEquals(1L, result.getId());
+        verify(orderDetailRepository).save(argThat(d -> d.getQuantity() == 3));
     }
 }

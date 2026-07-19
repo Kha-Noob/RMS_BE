@@ -186,6 +186,73 @@ public class HRController {
         private LocalDate date;
     }
 
+    @GetMapping("/api/employee/attendance/status")
+    public ResponseEntity<?> getAttendanceStatus() {
+        try {
+            User user = getLoggedInUser();
+            if (user == null) {
+                return ResponseEntity.status(401).body("Chưa đăng nhập");
+            }
+            Employee employee = employeeRepository.findByUserId(user.getId())
+                    .orElseThrow(() -> new RuntimeException("Tài khoản chưa được liên kết với hồ sơ nhân sự"));
+            Optional<EmployeeAttendance> activeOpt = employeeAttendanceRepository.findFirstByEmployeeIdAndClockOutIsNull(employee.getId());
+            
+            java.util.Map<String, Object> result = new java.util.HashMap<>();
+            if (activeOpt.isPresent()) {
+                EmployeeAttendance att = activeOpt.get();
+                result.put("isClockedIn", true);
+                result.put("clockInTime", att.getClockIn());
+                result.put("clockOutTime", null);
+            } else {
+                Optional<EmployeeAttendance> todayOpt = employeeAttendanceRepository.findByEmployeeIdAndDate(employee.getId(), LocalDate.now());
+                result.put("isClockedIn", false);
+                if (todayOpt.isPresent()) {
+                    EmployeeAttendance att = todayOpt.get();
+                    result.put("clockInTime", att.getClockIn());
+                    result.put("clockOutTime", att.getClockOut());
+                } else {
+                    result.put("clockInTime", null);
+                    result.put("clockOutTime", null);
+                }
+            }
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @GetMapping("/api/employee/leave-requests")
+    public ResponseEntity<?> getLeaveRequests() {
+        try {
+            User user = getLoggedInUser();
+            if (user == null) {
+                return ResponseEntity.status(401).body("Chưa đăng nhập");
+            }
+            Employee employee = employeeRepository.findByUserId(user.getId())
+                    .orElseThrow(() -> new RuntimeException("Tài khoản chưa được liên kết với hồ sơ nhân sự"));
+            List<LeaveRequest> list = leaveRequestRepository.findByEmployeeId(employee.getId());
+            return ResponseEntity.ok(list);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @GetMapping("/api/employee/forgot-clock-requests")
+    public ResponseEntity<?> getForgotClockRequests() {
+        try {
+            User user = getLoggedInUser();
+            if (user == null) {
+                return ResponseEntity.status(401).body("Chưa đăng nhập");
+            }
+            Employee employee = employeeRepository.findByUserId(user.getId())
+                    .orElseThrow(() -> new RuntimeException("Tài khoản chưa được liên kết với hồ sơ nhân sự"));
+            List<ForgotClockRequest> list = forgotClockRequestRepository.findByEmployeeId(employee.getId());
+            return ResponseEntity.ok(list);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
     @PostMapping("/api/employee/clock-in")
     public ResponseEntity<?> clockInUser() {
         try {
@@ -316,15 +383,22 @@ public class HRController {
     }
 
     @DeleteMapping("/api/hr/shifts/{id}")
+    @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<?> deleteShiftTemplate(@PathVariable Long id) {
         try {
-            // Check if there are assignments using this template
-            long count = employeeShiftAssignmentRepository.findAll().stream()
-                    .filter(a -> a.getShiftTemplate().getId().equals(id))
-                    .count();
-            if (count > 0) {
-                return ResponseEntity.badRequest().body("Ca làm việc này đang được sử dụng để phân lịch, không thể xóa!");
-            }
+            // Safe cascade: delete assignments of this template
+            employeeShiftAssignmentRepository.findAll().stream()
+                    .filter(a -> a.getShiftTemplate() != null && a.getShiftTemplate().getId().equals(id))
+                    .forEach(a -> {
+                        // Unlink assignment from check-in/out records
+                        employeeAttendanceRepository.findByShiftAssignmentId(a.getId())
+                                .ifPresent(att -> {
+                                    att.setShiftAssignment(null);
+                                    employeeAttendanceRepository.save(att);
+                                });
+                        employeeShiftAssignmentRepository.delete(a);
+                    });
+            
             shiftTemplateRepository.deleteById(id);
             return ResponseEntity.ok("Xóa ca làm việc thành công!");
         } catch (Exception e) {
@@ -594,6 +668,62 @@ public class HRController {
             userRepository.delete(user);
 
             return ResponseEntity.ok(java.util.Map.of("message", "Xóa nhân viên thành công."));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @GetMapping("/api/hr/leave-requests")
+    public ResponseEntity<?> getLeaveRequestsAdmin() {
+        try {
+            User loggedIn = getLoggedInUser();
+            if (loggedIn == null) {
+                return ResponseEntity.status(401).body("Chưa đăng nhập");
+            }
+            String activeBranchId = getActiveBranchId();
+            List<LeaveRequest> list;
+            if (web.restaurant.swp.config.BranchContext.canSwitchBranch(loggedIn)) {
+                if (activeBranchId != null) {
+                    list = leaveRequestRepository.findByEmployeeBranchBranchId(activeBranchId);
+                } else {
+                    list = leaveRequestRepository.findAll();
+                }
+            } else {
+                if (loggedIn.getBranch() != null) {
+                    list = leaveRequestRepository.findByEmployeeBranchBranchId(loggedIn.getBranch().getBranchId());
+                } else {
+                    list = List.of();
+                }
+            }
+            return ResponseEntity.ok(list);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @GetMapping("/api/hr/forgot-clock")
+    public ResponseEntity<?> getForgotClockRequestsAdmin() {
+        try {
+            User loggedIn = getLoggedInUser();
+            if (loggedIn == null) {
+                return ResponseEntity.status(401).body("Chưa đăng nhập");
+            }
+            String activeBranchId = getActiveBranchId();
+            List<ForgotClockRequest> list;
+            if (web.restaurant.swp.config.BranchContext.canSwitchBranch(loggedIn)) {
+                if (activeBranchId != null) {
+                    list = forgotClockRequestRepository.findByEmployeeBranchBranchId(activeBranchId);
+                } else {
+                    list = forgotClockRequestRepository.findAll();
+                }
+            } else {
+                if (loggedIn.getBranch() != null) {
+                    list = forgotClockRequestRepository.findByEmployeeBranchBranchId(loggedIn.getBranch().getBranchId());
+                } else {
+                    list = List.of();
+                }
+            }
+            return ResponseEntity.ok(list);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
