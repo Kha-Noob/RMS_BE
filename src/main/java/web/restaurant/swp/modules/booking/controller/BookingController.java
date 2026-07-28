@@ -137,7 +137,11 @@ public class BookingController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime time) {
         try {
             List<Long> bookedTableIds = bookingService.getBookedTableIds(branchId, time);
-            return ResponseEntity.ok(Map.of("bookedTableIds", bookedTableIds));
+            Map<Long, Map<String, Object>> bookedTableDetails = bookingService.getBookedTableDetails(branchId, time);
+            return ResponseEntity.ok(Map.of(
+                "bookedTableIds", bookedTableIds,
+                "bookedTableDetails", bookedTableDetails
+            ));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }

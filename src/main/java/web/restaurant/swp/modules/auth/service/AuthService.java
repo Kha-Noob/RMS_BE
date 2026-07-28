@@ -100,9 +100,9 @@ public class AuthService {
 
         User user = userOpt.get();
 
-        // Enforce Gmail-only login for CUSTOMER role
+        // Enforce Gmail-only login for CUSTOMER role (allow @liteflow.com for test/seeded accounts)
         boolean isCustomer = user.getRoles().stream().anyMatch(r -> "CUSTOMER".equalsIgnoreCase(r.getName()));
-        if (isCustomer && !email.toLowerCase().endsWith("@gmail.com") && !email.toLowerCase().endsWith("@googlemail.com")) {
+        if (isCustomer && !email.toLowerCase().endsWith("@gmail.com") && !email.toLowerCase().endsWith("@googlemail.com") && !email.toLowerCase().endsWith("@liteflow.com")) {
             logAudit(user, "LOGIN_FAILED_NOT_GMAIL", "User", user.getId().toString(), 
                 "Customer attempted login with non-Gmail address: " + email, ipAddress);
             throw new RuntimeException("Tài khoản khách hàng bắt buộc phải sử dụng Gmail.");
@@ -337,6 +337,11 @@ public class AuthService {
         User user = userOpt.get();
         if (!user.isActive()) {
             throw new RuntimeException("Tài khoản đang bị khoá.");
+        }
+
+        boolean isCustomer = user.getRoles().stream().anyMatch(r -> "CUSTOMER".equalsIgnoreCase(r.getName()));
+        if (isCustomer && !email.toLowerCase().endsWith("@gmail.com") && !email.toLowerCase().endsWith("@googlemail.com") && !email.toLowerCase().endsWith("@liteflow.com")) {
+            throw new RuntimeException("Tài khoản khách hàng bắt buộc phải sử dụng Gmail.");
         }
         
         // Check temporary google passcode first

@@ -23,6 +23,7 @@ public class BookingService {
     private final org.springframework.mail.javamail.JavaMailSender mailSender;
     private final web.restaurant.swp.modules.branch.repository.BranchRepository branchRepository;
     private final web.restaurant.swp.modules.event.repository.EventRepository eventRepository;
+    private final web.restaurant.swp.modules.floorplan.repository.FloorPlanObjectRepository floorPlanObjectRepository;
 
     @org.springframework.beans.factory.annotation.Value("${spring.mail.username}")
     private String senderEmail;
@@ -59,6 +60,45 @@ public class BookingService {
                 .map(Booking::getTableId)
                 .filter(Objects::nonNull)
                 .toList();
+    }
+
+    public java.util.Map<Long, java.util.Map<String, Object>> getBookedTableDetails(String branchId, LocalDateTime bookingTime) {
+        return getBookedTableDetails(branchId, bookingTime, 120);
+    }
+
+    public java.util.Map<Long, java.util.Map<String, Object>> getBookedTableDetails(String branchId, LocalDateTime bookingTime, int newDurationMinutes) {
+        LocalDateTime queryStart = bookingTime.minusHours(4);
+        LocalDateTime queryEnd = bookingTime.plusHours(4);
+
+        List<Booking> activeBookings = bookingRepository.findByBranchIdAndStatusNotInAndBookingTimeBetween(
+                branchId, List.of("CANCELLED", "NO_SHOW"), queryStart, queryEnd);
+
+        java.util.Map<Long, java.util.Map<String, Object>> detailsMap = new java.util.HashMap<>();
+
+        activeBookings.stream()
+                .filter(b -> isOverlapping(b.getBookingTime(), b.getDurationMinutes() != null ? b.getDurationMinutes() : 120, bookingTime, newDurationMinutes))
+                .forEach(b -> {
+                    if (b.getTableId() != null) {
+                        int duration = b.getDurationMinutes() != null ? b.getDurationMinutes() : 120;
+                        LocalDateTime start = b.getBookingTime();
+                        LocalDateTime end = start.plusMinutes(duration);
+
+                        String startTime = start.toLocalTime().toString().substring(0, 5);
+                        String endTime = end.toLocalTime().toString().substring(0, 5);
+                        String formattedRange = startTime + " - " + endTime;
+
+                        java.util.Map<String, Object> detail = new java.util.HashMap<>();
+                        detail.put("startTime", startTime);
+                        detail.put("endTime", endTime);
+                        detail.put("formattedRange", formattedRange);
+                        detail.put("availableAtTime", endTime);
+                        detail.put("durationMinutes", duration);
+
+                        detailsMap.put(b.getTableId(), detail);
+                    }
+                });
+
+        return detailsMap;
     }
 
     /**
@@ -102,8 +142,8 @@ public class BookingService {
         }
 
         // 2. Booking Time restriction validation
-        if (booking.getBookingTime().isBefore(LocalDateTime.now().plusMinutes(15))) {
-            throw new RuntimeException("Thời gian đặt bàn phải ở tương lai (tối thiểu trước 15 phút)!");
+        if (booking.getBookingTime().isBefore(LocalDateTime.now().plusMinutes(30))) {
+            throw new RuntimeException("Thời gian đặt bàn phải cách thời gian hiện tại ít nhất 30 phút và không được ở quá khứ!");
         }
         if (booking.getBookingTime().isAfter(LocalDateTime.now().plusDays(30))) {
             throw new RuntimeException("Chỉ được đặt bàn trước tối đa 30 ngày!");
@@ -129,17 +169,47 @@ public class BookingService {
 
         // 4. Table selection & capacity check
         if (booking.getTableId() != null) {
-            web.restaurant.swp.modules.pos.model.TableEntity table = tableRepository.findById(booking.getTableId())
-                    .orElseThrow(() -> new RuntimeException("Bàn được chọn không tồn tại!"));
+            boolean validBranch = false;
+            Integer capacity = null;
 
-            // Validate table belongs to the branch
-            if (table.getRoom() == null || table.getRoom().getBranch() == null || 
-                !table.getRoom().getBranch().getBranchId().equals(booking.getBranchId())) {
+            // Check if tableId refers to a FloorPlanObject (from 2D floor plan)
+            java.util.Optional<web.restaurant.swp.modules.floorplan.model.FloorPlanObject> fpoOpt = floorPlanObjectRepository.findById(booking.getTableId());
+            if (fpoOpt.isPresent()) {
+                web.restaurant.swp.modules.floorplan.model.FloorPlanObject fpo = fpoOpt.get();
+                if (fpo.getFloorPlan() != null && fpo.getFloorPlan().getBranch() != null && fpo.getFloorPlan().getBranch().getBranchId() != null &&
+                    fpo.getFloorPlan().getBranch().getBranchId().equals(booking.getBranchId())) {
+                    validBranch = true;
+                    if (fpo.getMetadataJson() != null) {
+                        java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"capacity\"\\s*:\\s*(\\d+)").matcher(fpo.getMetadataJson());
+                        if (m.find()) {
+                            capacity = Integer.parseInt(m.group(1));
+                        }
+                    }
+                    if (booking.getTableLabel() == null || booking.getTableLabel().trim().isEmpty()) {
+                        booking.setTableLabel(fpo.getLabel());
+                    }
+                }
+            }
+
+            // Fallback: check POS TableEntity
+            if (!validBranch) {
+                web.restaurant.swp.modules.pos.model.TableEntity table = tableRepository.findById(booking.getTableId()).orElse(null);
+                if (table != null && table.getRoom() != null && table.getRoom().getBranch() != null &&
+                    table.getRoom().getBranch().getBranchId().equals(booking.getBranchId())) {
+                    validBranch = true;
+                    capacity = table.getCapacity();
+                    if (booking.getTableLabel() == null || booking.getTableLabel().trim().isEmpty()) {
+                        booking.setTableLabel(table.getName());
+                    }
+                }
+            }
+
+            if (!validBranch) {
                 throw new RuntimeException("Bàn được chọn không thuộc chi nhánh này!");
             }
 
-            // Validate capacity
-            if (table.getCapacity() < booking.getGuests()) {
+            // Validate capacity if available
+            if (capacity != null && capacity < booking.getGuests()) {
                 throw new RuntimeException("Sức chứa của bàn không đủ cho số lượng khách!");
             }
 
@@ -147,11 +217,6 @@ public class BookingService {
             List<Long> bookedIds = getBookedTableIds(booking.getBranchId(), booking.getBookingTime(), newDuration);
             if (bookedIds.contains(booking.getTableId())) {
                 throw new RuntimeException("Bàn này đã được đặt trước hoặc đang được sử dụng trong khoảng thời gian này!");
-            }
-            
-            // Set table label from DB if not provided
-            if (booking.getTableLabel() == null || booking.getTableLabel().trim().isEmpty()) {
-                booking.setTableLabel(table.getName());
             }
         }
 
@@ -240,8 +305,8 @@ public class BookingService {
 
         // Validate new time if changed
         if (updated.getBookingTime() != null && !updated.getBookingTime().isEqual(existing.getBookingTime())) {
-            if (updated.getBookingTime().isBefore(LocalDateTime.now().plusMinutes(15))) {
-                throw new RuntimeException("Thời gian đặt bàn mới phải ở tương lai (tối thiểu trước 15 phút)!");
+            if (updated.getBookingTime().isBefore(LocalDateTime.now().plusMinutes(30))) {
+                throw new RuntimeException("Thời gian đặt bàn mới phải cách thời gian hiện tại ít nhất 30 phút và không được ở quá khứ!");
             }
             if (updated.getBookingTime().isAfter(LocalDateTime.now().plusDays(30))) {
                 throw new RuntimeException("Chỉ được đặt bàn trước tối đa 30 ngày!");
@@ -250,15 +315,38 @@ public class BookingService {
 
         // Validate table capacity & branch match if table/guests/time changes
         if (newTableId != null && (updated.getTableId() != null || updated.getGuests() != null || updated.getBookingTime() != null)) {
-            web.restaurant.swp.modules.pos.model.TableEntity table = tableRepository.findById(newTableId)
-                    .orElseThrow(() -> new RuntimeException("Bàn được chọn không tồn tại!"));
+            boolean validBranch = false;
+            Integer capacity = null;
 
-            if (table.getRoom() == null || table.getRoom().getBranch() == null || 
-                !table.getRoom().getBranch().getBranchId().equals(branchId)) {
+            java.util.Optional<web.restaurant.swp.modules.floorplan.model.FloorPlanObject> fpoOpt = floorPlanObjectRepository.findById(newTableId);
+            if (fpoOpt.isPresent()) {
+                web.restaurant.swp.modules.floorplan.model.FloorPlanObject fpo = fpoOpt.get();
+                if (fpo.getFloorPlan() != null && fpo.getFloorPlan().getBranch() != null && fpo.getFloorPlan().getBranch().getBranchId() != null &&
+                    fpo.getFloorPlan().getBranch().getBranchId().equals(branchId)) {
+                    validBranch = true;
+                    if (fpo.getMetadataJson() != null) {
+                        java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"capacity\"\\s*:\\s*(\\d+)").matcher(fpo.getMetadataJson());
+                        if (m.find()) {
+                            capacity = Integer.parseInt(m.group(1));
+                        }
+                    }
+                }
+            }
+
+            if (!validBranch) {
+                web.restaurant.swp.modules.pos.model.TableEntity table = tableRepository.findById(newTableId).orElse(null);
+                if (table != null && table.getRoom() != null && table.getRoom().getBranch() != null &&
+                    table.getRoom().getBranch().getBranchId().equals(branchId)) {
+                    validBranch = true;
+                    capacity = table.getCapacity();
+                }
+            }
+
+            if (!validBranch) {
                 throw new RuntimeException("Bàn được chọn không thuộc chi nhánh này!");
             }
 
-            if (table.getCapacity() < guests) {
+            if (capacity != null && capacity < guests) {
                 throw new RuntimeException("Sức chứa của bàn không đủ cho số lượng khách!");
             }
         }

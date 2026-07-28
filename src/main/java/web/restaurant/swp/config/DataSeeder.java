@@ -28,8 +28,8 @@ public class DataSeeder implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        if (environment.getActiveProfiles().length > 0 && Arrays.asList(environment.getActiveProfiles()).contains("test")) {
-            log.info("Test profile active - skipping database seeding.");
+        if (environment.getActiveProfiles().length > 0 && (Arrays.asList(environment.getActiveProfiles()).contains("test") || Arrays.asList(environment.getActiveProfiles()).contains("h2"))) {
+            log.info("Test or H2 profile active - skipping PostgreSQL database seeding.");
             return;
         }
         if (roleRepository.count() > 0) {
