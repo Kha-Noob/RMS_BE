@@ -61,6 +61,9 @@ public class Product {
     @Column(name = "ingredients", columnDefinition = "TEXT")
     private String ingredients;
 
+    @Column(name = "quantity")
+    private Integer quantity;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "tenant_id")
     private Tenant tenant;

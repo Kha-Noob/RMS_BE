@@ -41,11 +41,20 @@ public class DataSeeder implements CommandLineRunner {
         // Align product names and variants with menu items
         log.info("====== Aligning database product names and variants with menu items ======");
         try {
-            // Self-healing migration for image_path length
+            // Self-healing migration for image_path length and quantity column
             try {
                 jdbcTemplate.execute("ALTER TABLE products ALTER COLUMN image_path TYPE TEXT");
+                jdbcTemplate.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS quantity INT");
             } catch (Exception ex) {
-                log.info("image_path column type alter skipped or already TEXT: {}", ex.getMessage());
+                log.info("Column migration skipped or already exists: {}", ex.getMessage());
+            }
+
+            // Seed initial quantities for items needing stock (beverages, flan, desserts)
+            try {
+                jdbcTemplate.execute("UPDATE products SET quantity = 50 WHERE category_id = (SELECT id FROM categories WHERE name = 'Đồ uống' LIMIT 1) AND (quantity IS NULL OR quantity = 0)");
+                jdbcTemplate.execute("UPDATE products SET quantity = 30 WHERE (name LIKE '%Flan%' OR name LIKE '%Chè%' OR name LIKE '%Kem%') AND (quantity IS NULL OR quantity = 0)");
+            } catch (Exception ex) {
+                log.warn("Seeding initial quantities skipped: {}", ex.getMessage());
             }
 
             // 1. Update product names to match menu names exactly

@@ -19,6 +19,7 @@ public class MenuItemRequest {
     private String imageUrl;
     private Long categoryId;
     private CategoryObj category;
+    private Integer quantity;
     private String status;
     private List<VariantRequest> variants;
 

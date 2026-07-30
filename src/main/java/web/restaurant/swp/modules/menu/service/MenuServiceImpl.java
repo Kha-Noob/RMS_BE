@@ -88,6 +88,7 @@ public class MenuServiceImpl implements MenuService {
                 .imagePath(request.getImageUrl() != null && !request.getImageUrl().trim().isEmpty() ? request.getImageUrl().trim() : "default.png")
                 .isActive(request.getStatus() == null || "ACTIVE".equalsIgnoreCase(request.getStatus()))
                 .category(category)
+                .quantity(request.getQuantity())
                 .tenant(tenant)
                 .build();
         product = productRepository.save(product);
@@ -141,6 +142,7 @@ public class MenuServiceImpl implements MenuService {
         if (request.getDescription() != null) product.setDescription(request.getDescription());
         if (request.getImageUrl() != null) product.setImagePath(request.getImageUrl().trim());
         if (request.getStatus() != null) product.setActive("ACTIVE".equalsIgnoreCase(request.getStatus()));
+        product.setQuantity(request.getQuantity());
 
         product = productRepository.save(product);
 
@@ -272,6 +274,7 @@ public class MenuServiceImpl implements MenuService {
                 .description(product.getDescription())
                 .priceVnd(priceVnd)
                 .imageUrl(product.getImagePath())
+                .quantity(product.getQuantity())
                 .status(product.isActive() ? "ACTIVE" : "INACTIVE")
                 .category(product.getCategory() != null
                         ? MenuItemResponse.CategoryInfo.builder()
