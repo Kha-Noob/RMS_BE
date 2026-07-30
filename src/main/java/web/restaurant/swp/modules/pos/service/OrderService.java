@@ -83,6 +83,12 @@ public class OrderService {
         ProductVariant variant = productVariantRepository.findById(variantId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy biến thể sản phẩm."));
 
+        if (variant.getProduct() != null && variant.getProduct().getQuantity() != null) {
+            if (variant.getProduct().getQuantity() <= 0) {
+                throw new RuntimeException("Món '" + variant.getProduct().getName() + "' đã hết hàng!");
+            }
+        }
+
         // Find or create a PENDING order for this session
         List<Order> orders = orderRepository.findBySessionId(sessionId);
         Order activeOrder = orders.stream()

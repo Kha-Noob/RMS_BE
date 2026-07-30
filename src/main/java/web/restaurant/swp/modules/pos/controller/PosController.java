@@ -144,9 +144,24 @@ public class PosController {
         floorPlanObjectRepository.saveAll(objects);
     }
 
+    private Optional<TableSession> findActiveSessionForTable(Long tableId) {
+        List<TableSession> activeSessions = tableSessionRepository.findAllByTableIdAndStatusOrderByIdDesc(tableId, "ACTIVE");
+        if (activeSessions.isEmpty()) {
+            return Optional.empty();
+        }
+        if (activeSessions.size() > 1) {
+            for (int i = 1; i < activeSessions.size(); i++) {
+                TableSession oldSess = activeSessions.get(i);
+                oldSess.setStatus("COMPLETED");
+                tableSessionRepository.save(oldSess);
+            }
+        }
+        return Optional.of(activeSessions.get(0));
+    }
+
     @GetMapping("/api/pos/session/active")
     public ResponseEntity<?> getActiveSession(@RequestParam Long tableId) {
-        Optional<TableSession> sessionOpt = tableSessionRepository.findByTableIdAndStatus(tableId, "ACTIVE");
+        Optional<TableSession> sessionOpt = findActiveSessionForTable(tableId);
         if (sessionOpt.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
@@ -767,8 +782,7 @@ public class PosController {
                                 posTable.put("tableStyle", t.getTableStyle());
                                 posTable.put("shape", t.getShape());
                                 // Find active session
-                                Optional<TableSession> sessionOpt = tableSessionRepository
-                                        .findByTableIdAndStatus(t.getId(), "ACTIVE");
+                                Optional<TableSession> sessionOpt = findActiveSessionForTable(t.getId());
                                 posTable.put("activeSessionId", sessionOpt.map(TableSession::getId).orElse(null));
                                 objMap.put("posTable", posTable);
                                 objMap.put("linked", true);
@@ -841,7 +855,7 @@ public class PosController {
                 map.put("room", null);
             }
 
-            Optional<TableSession> sessionOpt = tableSessionRepository.findByTableIdAndStatus(t.getId(), "ACTIVE");
+            Optional<TableSession> sessionOpt = findActiveSessionForTable(t.getId());
             if (sessionOpt.isPresent()) {
                 TableSession session = sessionOpt.get();
                 map.put("activeSessionId", session.getId());
@@ -1164,7 +1178,7 @@ public class PosController {
             if (branchError.hasError()) return branchError.toResponse();
 
             if (!"EMPTY".equalsIgnoreCase(table.getStatus())
-                    || tableSessionRepository.findByTableIdAndStatus(tableId, "ACTIVE").isPresent()) {
+                    || findActiveSessionForTable(tableId).isPresent()) {
                 return message(409, "Không thể xóa bàn vì đang có phiên/order đang hoạt động.");
             }
 
