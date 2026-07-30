@@ -40,6 +40,8 @@ import web.restaurant.swp.modules.floorplan.model.FloorPlan;
 import web.restaurant.swp.modules.floorplan.model.FloorPlanObject;
 import web.restaurant.swp.modules.floorplan.repository.FloorPlanRepository;
 import web.restaurant.swp.modules.floorplan.repository.FloorPlanObjectRepository;
+import web.restaurant.swp.modules.booking.model.Booking;
+import web.restaurant.swp.modules.booking.repository.BookingRepository;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -54,6 +56,7 @@ public class PosController {
 
     private final TableRepository tableRepository;
     private final TableSessionRepository tableSessionRepository;
+    private final BookingRepository bookingRepository;
     private final OrderRepository orderRepository;
     private final OrderDetailRepository orderDetailRepository;
     private final ProductRepository productRepository;
@@ -838,14 +841,30 @@ public class PosController {
         }
     }
 
-    private List<Map<String, Object>> enrichTables(List<TableEntity> list) {
+    private List<Map<String, Object>> enrichTables(List<TableEntity> list, String branchId, String dateStr) {
         List<Map<String, Object>> response = new ArrayList<>();
+
+        LocalDate targetDate;
+        try {
+            targetDate = (dateStr != null && !dateStr.isBlank()) ? LocalDate.parse(dateStr) : LocalDate.now();
+        } catch (Exception e) {
+            targetDate = LocalDate.now();
+        }
+        boolean isToday = targetDate.equals(LocalDate.now());
+
+        LocalDateTime startOfDay = targetDate.atStartOfDay();
+        LocalDateTime endOfDay = targetDate.atTime(23, 59, 59);
+        List<Booking> dateBookings = (branchId != null && !branchId.isBlank())
+                ? bookingRepository.findByBranchIdAndStatusNotAndBookingTimeBetween(branchId, "CANCELLED", startOfDay, endOfDay)
+                : Collections.emptyList();
+
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+
         for (TableEntity t : list) {
             Map<String, Object> map = new LinkedHashMap<>();
             map.put("id", t.getId());
             map.put("name", t.getName());
             map.put("capacity", t.getCapacity());
-            map.put("status", t.getStatus());
             map.put("guestCount", t.getGuestCount());
             map.put("tableStyle", t.getTableStyle());
             map.put("shape", t.getShape());
@@ -855,50 +874,102 @@ public class PosController {
                 map.put("room", null);
             }
 
-            Optional<TableSession> sessionOpt = findActiveSessionForTable(t.getId());
-            if (sessionOpt.isPresent()) {
-                TableSession session = sessionOpt.get();
-                map.put("activeSessionId", session.getId());
-                map.put("sessionOpenedAt", session.getCheckInTime() != null ? session.getCheckInTime().toString() : null);
+            Booking booking = dateBookings.stream()
+                    .filter(b -> (b.getTableId() != null && b.getTableId().equals(t.getId()))
+                              || (b.getTableLabel() != null && b.getTableLabel().equalsIgnoreCase(t.getName())))
+                    .findFirst()
+                    .orElse(null);
 
-                List<Order> orders = orderRepository.findBySessionId(session.getId());
-                double total = 0.0;
-                for (Order o : orders) {
-                    String status = o.getStatus();
-                    if ("PENDING".equalsIgnoreCase(status) || "SENT".equalsIgnoreCase(status)
-                            || "COOKING".equalsIgnoreCase(status) || "READY".equalsIgnoreCase(status)
-                            || "SERVED".equalsIgnoreCase(status)) {
-                        total += o.getTotalAmount() != null ? o.getTotalAmount() : 0.0;
+            String status = isToday ? t.getStatus() : (booking != null ? "RESERVED" : "EMPTY");
+            if (isToday && booking != null && !"OCCUPIED".equalsIgnoreCase(status)) {
+                status = "RESERVED";
+            }
+            map.put("status", status);
+
+            if (isToday) {
+                Optional<TableSession> sessionOpt = findActiveSessionForTable(t.getId());
+                if (sessionOpt.isPresent()) {
+                    TableSession session = sessionOpt.get();
+                    map.put("activeSessionId", session.getId());
+                    map.put("sessionOpenedAt", session.getCheckInTime() != null ? session.getCheckInTime().toString() : null);
+
+                    List<Order> orders = orderRepository.findBySessionId(session.getId());
+                    double total = 0.0;
+                    for (Order o : orders) {
+                        String st = o.getStatus();
+                        if ("PENDING".equalsIgnoreCase(st) || "SENT".equalsIgnoreCase(st)
+                                || "COOKING".equalsIgnoreCase(st) || "READY".equalsIgnoreCase(st)
+                                || "SERVED".equalsIgnoreCase(st)) {
+                            total += o.getTotalAmount() != null ? o.getTotalAmount() : 0.0;
+                        }
                     }
+                    map.put("sessionTotalAmount", total);
+                } else {
+                    map.put("activeSessionId", null);
+                    map.put("sessionOpenedAt", null);
+                    map.put("sessionTotalAmount", 0.0);
                 }
-                map.put("sessionTotalAmount", total);
             } else {
                 map.put("activeSessionId", null);
                 map.put("sessionOpenedAt", null);
                 map.put("sessionTotalAmount", 0.0);
             }
+
+            if (booking != null) {
+                Map<String, Object> bMap = new LinkedHashMap<>();
+                bMap.put("id", booking.getId());
+                bMap.put("customerName", booking.getCustomerName());
+                bMap.put("customerPhone", booking.getCustomerPhone());
+                bMap.put("customerEmail", booking.getCustomerEmail());
+                bMap.put("bookingTime", booking.getBookingTime() != null ? booking.getBookingTime().toString() : null);
+                bMap.put("guests", booking.getGuests());
+                bMap.put("depositAmount", booking.getDepositAmount() != null ? booking.getDepositAmount() : 0.0);
+                bMap.put("depositPaid", booking.getDepositPaid() != null ? booking.getDepositPaid() : false);
+                bMap.put("paymentStatus", booking.getPaymentStatus());
+                bMap.put("notes", booking.getNotes());
+                bMap.put("source", booking.getSource());
+
+                List<Map<String, Object>> items = new ArrayList<>();
+                if (booking.getOrderedItemsJson() != null && !booking.getOrderedItemsJson().isBlank()) {
+                    try {
+                        items = mapper.readValue(booking.getOrderedItemsJson(), new com.fasterxml.jackson.core.type.TypeReference<List<Map<String, Object>>>() {});
+                    } catch (Exception ex) {
+                        log.warn("Failed to parse orderedItemsJson for booking id {}: {}", booking.getId(), ex.getMessage());
+                    }
+                }
+                bMap.put("orderedItems", items);
+                map.put("bookingDetails", bMap);
+            } else {
+                map.put("bookingDetails", null);
+            }
+
             response.add(map);
         }
         return response;
     }
 
     @GetMapping("/api/pos/tables")
-    public ResponseEntity<?> getTables(@RequestParam(required = false) Long roomId) {
+    public ResponseEntity<?> getTables(
+            @RequestParam(required = false) Long roomId,
+            @RequestParam(required = false) String date) {
         try {
             BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
             String branchId = branchAccessService.validateAndGetBranchId(null, error);
             if (error.hasError()) return error.toResponse();
 
+            List<TableEntity> tables;
             if (roomId != null) {
                 Room room = roomRepository.findById(roomId)
                         .orElseThrow(() -> new NoSuchElementException("Không tìm thấy dữ liệu"));
                 if (!room.getBranch().getBranchId().equals(branchId)) {
                     return message(403, "You do not have access to this branch");
                 }
-                return ResponseEntity.ok(enrichTables(tableRepository.findByRoomIdOrderByIdAsc(roomId)));
+                tables = tableRepository.findByRoomIdOrderByIdAsc(roomId);
+            } else {
+                tables = tableRepository.findByRoomBranchBranchIdOrderByRoomDisplayOrderAscIdAsc(branchId);
             }
 
-            return ResponseEntity.ok(enrichTables(tableRepository.findByRoomBranchBranchIdOrderByRoomDisplayOrderAscIdAsc(branchId)));
+            return ResponseEntity.ok(enrichTables(tables, branchId, date));
         } catch (NoSuchElementException e) {
             return message(404, "Không tìm thấy dữ liệu");
         } catch (Exception e) {
