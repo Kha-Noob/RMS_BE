@@ -1001,10 +1001,16 @@ public class PosController {
                 bMap.put("notes", booking.getNotes());
                 bMap.put("source", booking.getSource());
 
-                List<Map<String, Object>> items = new ArrayList<>();
+                List<Object> items = new ArrayList<>();
                 if (booking.getOrderedItemsJson() != null && !booking.getOrderedItemsJson().isBlank()) {
                     try {
-                        items = mapper.readValue(booking.getOrderedItemsJson(), new com.fasterxml.jackson.core.type.TypeReference<List<Map<String, Object>>>() {});
+                        String rawJson = booking.getOrderedItemsJson().trim();
+                        if (rawJson.startsWith("\"") && rawJson.endsWith("\"")) {
+                            try {
+                                rawJson = mapper.readValue(rawJson, String.class);
+                            } catch (Exception ignored) {}
+                        }
+                        items = mapper.readValue(rawJson, new com.fasterxml.jackson.core.type.TypeReference<List<Object>>() {});
                     } catch (Exception ex) {
                         log.warn("Failed to parse orderedItemsJson for booking id {}: {}", booking.getId(), ex.getMessage());
                     }
