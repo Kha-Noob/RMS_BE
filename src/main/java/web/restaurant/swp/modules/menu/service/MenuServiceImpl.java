@@ -64,8 +64,17 @@ public class MenuServiceImpl implements MenuService {
     @Override
     @Transactional
     public MenuItemResponse createMenuItem(MenuItemRequest request) {
-        Category category = categoryRepository.findById(request.getCategoryId())
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy danh mục"));
+        Long catId = request.getResolvedCategoryId();
+        Category category = null;
+        if (catId != null) {
+            category = categoryRepository.findById(catId).orElse(null);
+        }
+        if (category == null) {
+            List<Category> allCats = categoryRepository.findAll();
+            if (!allCats.isEmpty()) {
+                category = allCats.get(0);
+            }
+        }
 
         User user = getLoggedInUser();
 
@@ -111,10 +120,12 @@ public class MenuServiceImpl implements MenuService {
         Product product = productRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy món ăn với ID: " + id));
 
-        if (request.getCategoryId() != null) {
-            Category category = categoryRepository.findById(request.getCategoryId())
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy danh mục"));
-            product.setCategory(category);
+        Long catId = request.getResolvedCategoryId();
+        if (catId != null) {
+            Category category = categoryRepository.findById(catId).orElse(null);
+            if (category != null) {
+                product.setCategory(category);
+            }
         }
 
         if (request.getName() != null) product.setName(request.getName().trim());
