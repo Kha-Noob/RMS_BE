@@ -100,12 +100,13 @@ public class AuthService {
 
         User user = userOpt.get();
 
-        // Enforce Gmail-only login for CUSTOMER role
+        // Enforce Gmail or @liteflow.com login for CUSTOMER role
         boolean isCustomer = user.getRoles().stream().anyMatch(r -> "CUSTOMER".equalsIgnoreCase(r.getName()));
-        if (isCustomer && !email.toLowerCase().endsWith("@gmail.com") && !email.toLowerCase().endsWith("@googlemail.com")) {
+        String lowerEmail = email.toLowerCase();
+        if (isCustomer && !lowerEmail.endsWith("@gmail.com") && !lowerEmail.endsWith("@googlemail.com") && !lowerEmail.endsWith("@liteflow.com")) {
             logAudit(user, "LOGIN_FAILED_NOT_GMAIL", "User", user.getId().toString(), 
                 "Customer attempted login with non-Gmail address: " + email, ipAddress);
-            throw new RuntimeException("Tài khoản khách hàng bắt buộc phải sử dụng Gmail.");
+            throw new RuntimeException("Tài khoản khách hàng bắt buộc phải sử dụng Gmail hoặc Email hệ thống.");
         }
 
         // Check if account is locked
