@@ -150,6 +150,9 @@ public class PosController {
     private Optional<TableSession> findActiveSessionForTable(Long tableId) {
         List<TableSession> activeSessions = tableSessionRepository.findAllByTableIdAndStatusOrderByIdDesc(tableId, "ACTIVE");
         if (activeSessions.isEmpty()) {
+            activeSessions = tableSessionRepository.findAllByTableIdAndStatusOrderByIdDesc(tableId, "SERVED");
+        }
+        if (activeSessions.isEmpty()) {
             return Optional.empty();
         }
         if (activeSessions.size() > 1) {
@@ -226,6 +229,35 @@ public class PosController {
             authService.logAudit(user, "OPEN_SESSION", "Order", session.getId().toString(),
                 "M? ca (Check-in) cho b?n " + session.getTable().getName(), "127.0.0.1", session.getTable().getRoom().getBranch().getBranchId());
             return ResponseEntity.ok(session);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PostMapping("/api/pos/session/complete-service")
+    public ResponseEntity<?> completeService(@RequestParam Long sessionId) {
+        try {
+            TableSession session = tableSessionRepository.findById(sessionId)
+                    .orElseThrow(() -> new RuntimeException("Không tìm thấy phiên bàn."));
+
+            String entityBranchId = session.getTable().getRoom().getBranch().getBranchId();
+            BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+            branchAccessService.validateEntityBranch(entityBranchId, error);
+            if (error.hasError()) return error.toResponse();
+
+            session.setStatus("SERVED");
+            tableSessionRepository.save(session);
+
+            TableEntity table = session.getTable();
+            table.setStatus("SERVED");
+            tableRepository.save(table);
+
+            User user = getLoggedInUser();
+            authService.logAudit(user, "COMPLETE_SERVICE", "Order", sessionId.toString(),
+                "Đã hoàn thành phục vụ bàn " + table.getName(), "127.0.0.1", entityBranchId);
+
+            KdsWebSocketHandler.broadcast("ORDER_STATE_CHANGED");
+            return ResponseEntity.ok(Map.of("message", "Đã hoàn thành phục vụ bàn " + table.getName()));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
@@ -881,15 +913,17 @@ public class PosController {
                     .orElse(null);
 
             String status = isToday ? t.getStatus() : (booking != null ? "RESERVED" : "EMPTY");
-            if (isToday && booking != null && !"OCCUPIED".equalsIgnoreCase(status)) {
+            if (isToday && booking != null && !"OCCUPIED".equalsIgnoreCase(status) && !"SERVED".equalsIgnoreCase(status)) {
                 status = "RESERVED";
             }
-            map.put("status", status);
 
             if (isToday) {
                 Optional<TableSession> sessionOpt = findActiveSessionForTable(t.getId());
                 if (sessionOpt.isPresent()) {
                     TableSession session = sessionOpt.get();
+                    if ("SERVED".equalsIgnoreCase(session.getStatus())) {
+                        status = "SERVED";
+                    }
                     map.put("activeSessionId", session.getId());
                     map.put("sessionOpenedAt", session.getCheckInTime() != null ? session.getCheckInTime().toString() : null);
 
@@ -914,6 +948,7 @@ public class PosController {
                 map.put("sessionOpenedAt", null);
                 map.put("sessionTotalAmount", 0.0);
             }
+            map.put("status", status);
 
             if (booking != null) {
                 Map<String, Object> bMap = new LinkedHashMap<>();
