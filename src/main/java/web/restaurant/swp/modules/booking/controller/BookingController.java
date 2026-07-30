@@ -140,18 +140,20 @@ public class BookingController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime time) {
         try {
             List<Long> bookedTableIds = bookingService.getBookedTableIds(branchId, time);
+            Map<Long, String> bookedTableTimes = bookingService.getBookedTableTimes(branchId, time, 120);
             
             // Fetch all currently occupied tables with their check-in times formatted
             List<TableSession> activeSessions = tableSessionRepository.findByTableRoomBranchBranchIdAndStatus(branchId, "ACTIVE");
             Map<Long, String> occupiedTimes = new HashMap<>();
             for (TableSession s : activeSessions) {
-                if (s.getCheckInTime() != null) {
+                if (s.getCheckInTime() != null && s.getTable() != null) {
                     occupiedTimes.put(s.getTable().getId(), s.getCheckInTime().toString());
                 }
             }
             
             return ResponseEntity.ok(Map.of(
                 "bookedTableIds", bookedTableIds,
+                "bookedTableTimes", bookedTableTimes,
                 "occupiedTables", occupiedTimes
             ));
         } catch (Exception e) {

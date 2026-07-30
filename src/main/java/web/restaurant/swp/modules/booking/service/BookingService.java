@@ -14,6 +14,8 @@ import web.restaurant.swp.modules.pos.model.TableSession;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.Objects;
 import java.util.ArrayList;
 
@@ -83,6 +85,44 @@ public class BookingService {
     }
 
     /**
+     * Get a map of booked table ID -> actual booking time string for tables booked during the requested slot.
+     */
+    public Map<Long, String> getBookedTableTimes(String branchId, LocalDateTime bookingTime, int newDurationMinutes) {
+        LocalDateTime queryStart = bookingTime.minusHours(4);
+        LocalDateTime queryEnd = bookingTime.plusHours(4);
+        
+        List<Booking> activeBookings = bookingRepository.findByBranchIdAndStatusNotInAndBookingTimeBetween(
+                branchId, List.of("CANCELLED", "NO_SHOW"), queryStart, queryEnd);
+                
+        Map<Long, String> bookedTimes = new java.util.HashMap<>();
+
+        for (Booking b : activeBookings) {
+            if (b.getTableId() == null) continue;
+            int dur = b.getDurationMinutes() != null ? b.getDurationMinutes() : 120;
+            if (isOverlapping(b.getBookingTime(), dur, bookingTime, newDurationMinutes)) {
+                bookedTimes.put(b.getTableId(), b.getBookingTime().toString());
+            }
+        }
+
+        // Real-time walk-in guest check
+        List<TableSession> activeSessions = tableSessionRepository.findByTableRoomBranchBranchIdAndStatus(branchId, "ACTIVE");
+        for (TableSession session : activeSessions) {
+            if (session.getCheckInTime() != null && session.getTable() != null) {
+                LocalDateTime sessionStart = session.getCheckInTime();
+                LocalDateTime sessionEnd = sessionStart.plusMinutes(120);
+                if (bookingTime.isAfter(sessionStart) && bookingTime.isBefore(sessionEnd)) {
+                    Long tableId = session.getTable().getId();
+                    if (!bookedTimes.containsKey(tableId)) {
+                        bookedTimes.put(tableId, sessionStart.toString());
+                    }
+                }
+            }
+        }
+
+        return bookedTimes;
+    }
+
+    /**
      * Create a new booking with validations.
      */
     @Transactional
@@ -116,15 +156,17 @@ public class BookingService {
             throw new RuntimeException("Thời gian đặt bàn không được để trống!");
         }
 
-        // Validate Operating Hours (08:00 - 22:00)
-        int hour = booking.getBookingTime().getHour();
-        if (hour < 8 || hour >= 22) {
-            throw new RuntimeException("Giờ đặt bàn phải nằm trong khung giờ hoạt động của nhà hàng (08:00 - 22:00)!");
+        // Validate Operating Hours (07:00 - 21:00)
+        int bookingHour = booking.getBookingTime().getHour();
+        int bookingMinute = booking.getBookingTime().getMinute();
+        int totalMinutes = bookingHour * 60 + bookingMinute;
+        if (totalMinutes < 7 * 60 || totalMinutes > 21 * 60) {
+            throw new RuntimeException("Giờ đặt bàn từ 7h đến 21h");
         }
 
         // 2. Booking Time restriction validation
-        if (booking.getBookingTime().isBefore(LocalDateTime.now().plusMinutes(15))) {
-            throw new RuntimeException("Thời gian đặt bàn phải ở tương lai (tối thiểu trước 15 phút)!");
+        if (booking.getBookingTime().isBefore(LocalDateTime.now().plusMinutes(30))) {
+            throw new RuntimeException("Thời gian đặt bàn phải ở tương lai (tối thiểu trước 30 phút)!");
         }
         if (booking.getBookingTime().isAfter(LocalDateTime.now().plusDays(30))) {
             throw new RuntimeException("Chỉ được đặt bàn trước tối đa 30 ngày!");
@@ -261,8 +303,8 @@ public class BookingService {
 
         // Validate new time if changed
         if (updated.getBookingTime() != null && !updated.getBookingTime().isEqual(existing.getBookingTime())) {
-            if (updated.getBookingTime().isBefore(LocalDateTime.now().plusMinutes(15))) {
-                throw new RuntimeException("Thời gian đặt bàn mới phải ở tương lai (tối thiểu trước 15 phút)!");
+            if (updated.getBookingTime().isBefore(LocalDateTime.now().plusMinutes(30))) {
+                throw new RuntimeException("Thời gian đặt bàn mới phải ở tương lai (tối thiểu trước 30 phút)!");
             }
             if (updated.getBookingTime().isAfter(LocalDateTime.now().plusDays(30))) {
                 throw new RuntimeException("Chỉ được đặt bàn trước tối đa 30 ngày!");

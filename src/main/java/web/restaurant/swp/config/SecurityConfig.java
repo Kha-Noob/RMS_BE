@@ -74,10 +74,11 @@ public class SecurityConfig {
                 User user = userRepository.findByEmail(email)
                         .orElseThrow(() -> new org.springframework.security.authentication.BadCredentialsException("Email không tồn tại trong hệ thống."));
 
-                // Enforce Gmail-only login for CUSTOMER role
+                // Enforce Gmail or @liteflow.com login for CUSTOMER role
                 boolean isCustomer = user.getRoles().stream().anyMatch(r -> "CUSTOMER".equalsIgnoreCase(r.getName()));
-                if (isCustomer && !email.toLowerCase().endsWith("@gmail.com") && !email.toLowerCase().endsWith("@googlemail.com")) {
-                    throw new org.springframework.security.authentication.BadCredentialsException("Tài khoản khách hàng bắt buộc phải sử dụng Gmail.");
+                String lowerEmail = email.toLowerCase();
+                if (isCustomer && !lowerEmail.endsWith("@gmail.com") && !lowerEmail.endsWith("@googlemail.com") && !lowerEmail.endsWith("@liteflow.com")) {
+                    throw new org.springframework.security.authentication.BadCredentialsException("Tài khoản khách hàng bắt buộc phải sử dụng Gmail hoặc Email hệ thống.");
                 }
 
                 if (!user.isActive()) {
