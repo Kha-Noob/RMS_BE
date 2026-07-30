@@ -27,6 +27,7 @@ public class MenuServiceImpl implements MenuService {
     private final ProductVariantRepository productVariantRepository;
     private final CategoryRepository categoryRepository;
     private final UserRepository userRepository;
+    private final web.restaurant.swp.modules.tenant.repository.TenantRepository tenantRepository;
 
     private User getLoggedInUser() {
         org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
@@ -77,6 +78,9 @@ public class MenuServiceImpl implements MenuService {
         }
 
         User user = getLoggedInUser();
+        web.restaurant.swp.modules.tenant.model.Tenant tenant = (user != null && user.getTenant() != null)
+                ? user.getTenant()
+                : tenantRepository.findById("tenant-1").orElse(null);
 
         Product product = Product.builder()
                 .name(request.getName().trim())
@@ -84,27 +88,32 @@ public class MenuServiceImpl implements MenuService {
                 .imagePath(request.getImageUrl() != null && !request.getImageUrl().trim().isEmpty() ? request.getImageUrl().trim() : "default.png")
                 .isActive(request.getStatus() == null || "ACTIVE".equalsIgnoreCase(request.getStatus()))
                 .category(category)
-                .tenant(user != null ? user.getTenant() : null)
+                .tenant(tenant)
                 .build();
         product = productRepository.save(product);
 
         if (request.getVariants() != null && !request.getVariants().isEmpty()) {
+            int vIndex = 1;
             for (MenuItemRequest.VariantRequest vr : request.getVariants()) {
+                double p = vr.getPriceVnd() != null ? vr.getPriceVnd().doubleValue() : 0.0;
                 ProductVariant variant = ProductVariant.builder()
                         .product(product)
-                        .name(vr.getName().trim())
-                        .price(vr.getPriceVnd() != null ? vr.getPriceVnd().doubleValue() : 0.0)
-                        .sku("SKU-" + product.getId() + "-" + System.currentTimeMillis())
+                        .name(vr.getName() != null && !vr.getName().trim().isEmpty() ? vr.getName().trim() : product.getName())
+                        .price(p)
+                        .originalPrice(p)
+                        .sku("SKU-" + product.getId() + "-" + vIndex++ + "-" + System.currentTimeMillis())
                         .isTopping(false)
                         .build();
                 productVariantRepository.save(variant);
             }
         } else {
+            double p = request.getPriceVnd() != null ? request.getPriceVnd().doubleValue() : 0.0;
             ProductVariant variant = ProductVariant.builder()
                     .product(product)
                     .name(product.getName())
-                    .price(request.getPriceVnd() != null ? request.getPriceVnd().doubleValue() : 0.0)
-                    .sku("SKU-" + product.getId() + "-" + System.currentTimeMillis())
+                    .price(p)
+                    .originalPrice(p)
+                    .sku("SKU-" + product.getId() + "-1-" + System.currentTimeMillis())
                     .isTopping(false)
                     .build();
             productVariantRepository.save(variant);
@@ -144,12 +153,15 @@ public class MenuServiceImpl implements MenuService {
                     log.warn("Cannot delete variant {} due to references", pv.getId());
                 }
             }
+            int vIndex = 1;
             for (MenuItemRequest.VariantRequest vr : request.getVariants()) {
+                double p = vr.getPriceVnd() != null ? vr.getPriceVnd().doubleValue() : 0.0;
                 ProductVariant variant = ProductVariant.builder()
                         .product(product)
-                        .name(vr.getName().trim())
-                        .price(vr.getPriceVnd() != null ? vr.getPriceVnd().doubleValue() : 0.0)
-                        .sku("SKU-" + product.getId() + "-" + System.currentTimeMillis())
+                        .name(vr.getName() != null && !vr.getName().trim().isEmpty() ? vr.getName().trim() : product.getName())
+                        .price(p)
+                        .originalPrice(p)
+                        .sku("SKU-" + product.getId() + "-" + vIndex++ + "-" + System.currentTimeMillis())
                         .isTopping(false)
                         .build();
                 productVariantRepository.save(variant);
