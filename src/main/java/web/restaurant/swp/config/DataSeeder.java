@@ -41,6 +41,13 @@ public class DataSeeder implements CommandLineRunner {
         // Align product names and variants with menu items
         log.info("====== Aligning database product names and variants with menu items ======");
         try {
+            // Self-healing migration for image_path length
+            try {
+                jdbcTemplate.execute("ALTER TABLE products ALTER COLUMN image_path TYPE TEXT");
+            } catch (Exception ex) {
+                log.info("image_path column type alter skipped or already TEXT: {}", ex.getMessage());
+            }
+
             // 1. Update product names to match menu names exactly
             jdbcTemplate.execute("UPDATE products SET name = 'Cơm Tấm Sườn Nướng' WHERE id = 1");
             jdbcTemplate.execute("UPDATE products SET name = 'Gỏi Cuốn' WHERE id = 3");
