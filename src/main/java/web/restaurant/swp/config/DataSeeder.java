@@ -53,8 +53,10 @@ public class DataSeeder implements CommandLineRunner {
             try {
                 jdbcTemplate.execute("UPDATE products SET quantity = 50 WHERE category_id = (SELECT id FROM categories WHERE name = 'Đồ uống' LIMIT 1) AND (quantity IS NULL OR quantity = 0)");
                 jdbcTemplate.execute("UPDATE products SET quantity = 30 WHERE (name LIKE '%Flan%' OR name LIKE '%Chè%' OR name LIKE '%Kem%') AND (quantity IS NULL OR quantity = 0)");
+                jdbcTemplate.execute("UPDATE tenants SET bank_name = 'MB Bank', bank_account_no = '0862807412', bank_account_name = 'LE DUC THUAN' WHERE tenant_id = 'tenant-1'");
+                jdbcTemplate.execute("UPDATE bank_settings SET bank_name = 'MB Bank', account_number = '0862807412', account_holder = 'LE DUC THUAN'");
             } catch (Exception ex) {
-                log.warn("Seeding initial quantities skipped: {}", ex.getMessage());
+                log.warn("Seeding initial quantities/bank info skipped: {}", ex.getMessage());
             }
 
             // 1. Update product names to match menu names exactly
