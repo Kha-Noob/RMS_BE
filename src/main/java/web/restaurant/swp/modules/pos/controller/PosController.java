@@ -914,14 +914,39 @@ public class PosController {
                     .orElse(null);
 
             String status;
-            if (isFuture) {
-                // In the future: tables can ONLY be RESERVED (if booked) or EMPTY
-                status = (booking != null) ? "RESERVED" : "EMPTY";
-                map.put("activeSessionId", null);
-                map.put("sessionOpenedAt", null);
-                map.put("sessionTotalAmount", 0.0);
+            if (booking != null) {
+                // Table has a reservation for this date -> RESERVED
+                status = "RESERVED";
+                if (isToday) {
+                    Optional<TableSession> sessionOpt = findActiveSessionForTable(t.getId());
+                    if (sessionOpt.isPresent()) {
+                        TableSession session = sessionOpt.get();
+                        map.put("activeSessionId", session.getId());
+                        map.put("sessionOpenedAt", session.getCheckInTime() != null ? session.getCheckInTime().toString() : null);
+
+                        List<Order> orders = orderRepository.findBySessionId(session.getId());
+                        double total = 0.0;
+                        for (Order o : orders) {
+                            String st = o.getStatus();
+                            if ("PENDING".equalsIgnoreCase(st) || "SENT".equalsIgnoreCase(st)
+                                    || "COOKING".equalsIgnoreCase(st) || "READY".equalsIgnoreCase(st)
+                                    || "SERVED".equalsIgnoreCase(st)) {
+                                total += o.getTotalAmount() != null ? o.getTotalAmount() : 0.0;
+                            }
+                        }
+                        map.put("sessionTotalAmount", total);
+                    } else {
+                        map.put("activeSessionId", null);
+                        map.put("sessionOpenedAt", null);
+                        map.put("sessionTotalAmount", 0.0);
+                    }
+                } else {
+                    map.put("activeSessionId", null);
+                    map.put("sessionOpenedAt", null);
+                    map.put("sessionTotalAmount", 0.0);
+                }
             } else if (isToday) {
-                // Today: show live real-time table session & status
+                // Today: show live real-time table session & status if no booking
                 Optional<TableSession> sessionOpt = findActiveSessionForTable(t.getId());
                 if (sessionOpt.isPresent()) {
                     TableSession session = sessionOpt.get();
@@ -945,8 +970,6 @@ public class PosController {
                         status = "SERVED";
                     } else if ("OCCUPIED".equalsIgnoreCase(t.getStatus())) {
                         status = "OCCUPIED";
-                    } else if (booking != null) {
-                        status = "RESERVED";
                     } else {
                         status = "EMPTY";
                     }
@@ -955,8 +978,8 @@ public class PosController {
                     map.put("sessionTotalAmount", 0.0);
                 }
             } else {
-                // Past date: show RESERVED if booked on that date, else EMPTY
-                status = (booking != null) ? "RESERVED" : "EMPTY";
+                // Other dates with no booking: EMPTY
+                status = "EMPTY";
                 map.put("activeSessionId", null);
                 map.put("sessionOpenedAt", null);
                 map.put("sessionTotalAmount", 0.0);
