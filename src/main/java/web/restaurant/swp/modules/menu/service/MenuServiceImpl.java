@@ -27,6 +27,7 @@ public class MenuServiceImpl implements MenuService {
     private final ProductVariantRepository productVariantRepository;
     private final CategoryRepository categoryRepository;
     private final UserRepository userRepository;
+    private final web.restaurant.swp.modules.tenant.repository.TenantRepository tenantRepository;
 
     private User getLoggedInUser() {
         org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
@@ -64,10 +65,22 @@ public class MenuServiceImpl implements MenuService {
     @Override
     @Transactional
     public MenuItemResponse createMenuItem(MenuItemRequest request) {
-        Category category = categoryRepository.findById(request.getCategoryId())
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy danh mục"));
+        Long catId = request.getResolvedCategoryId();
+        Category category = null;
+        if (catId != null) {
+            category = categoryRepository.findById(catId).orElse(null);
+        }
+        if (category == null) {
+            List<Category> allCats = categoryRepository.findAll();
+            if (!allCats.isEmpty()) {
+                category = allCats.get(0);
+            }
+        }
 
         User user = getLoggedInUser();
+        web.restaurant.swp.modules.tenant.model.Tenant tenant = (user != null && user.getTenant() != null)
+                ? user.getTenant()
+                : tenantRepository.findById("tenant-1").orElse(null);
 
         Product product = Product.builder()
                 .name(request.getName().trim())
@@ -75,27 +88,33 @@ public class MenuServiceImpl implements MenuService {
                 .imagePath(request.getImageUrl() != null && !request.getImageUrl().trim().isEmpty() ? request.getImageUrl().trim() : "default.png")
                 .isActive(request.getStatus() == null || "ACTIVE".equalsIgnoreCase(request.getStatus()))
                 .category(category)
-                .tenant(user != null ? user.getTenant() : null)
+                .quantity(request.getQuantity())
+                .tenant(tenant)
                 .build();
         product = productRepository.save(product);
 
         if (request.getVariants() != null && !request.getVariants().isEmpty()) {
+            int vIndex = 1;
             for (MenuItemRequest.VariantRequest vr : request.getVariants()) {
+                double p = vr.getPriceVnd() != null ? vr.getPriceVnd().doubleValue() : 0.0;
                 ProductVariant variant = ProductVariant.builder()
                         .product(product)
-                        .name(vr.getName().trim())
-                        .price(vr.getPriceVnd() != null ? vr.getPriceVnd().doubleValue() : 0.0)
-                        .sku("SKU-" + product.getId() + "-" + System.currentTimeMillis())
+                        .name(vr.getName() != null && !vr.getName().trim().isEmpty() ? vr.getName().trim() : product.getName())
+                        .price(p)
+                        .originalPrice(p)
+                        .sku("SKU-" + product.getId() + "-" + vIndex++ + "-" + System.currentTimeMillis())
                         .isTopping(false)
                         .build();
                 productVariantRepository.save(variant);
             }
         } else {
+            double p = request.getPriceVnd() != null ? request.getPriceVnd().doubleValue() : 0.0;
             ProductVariant variant = ProductVariant.builder()
                     .product(product)
                     .name(product.getName())
-                    .price(request.getPriceVnd() != null ? request.getPriceVnd().doubleValue() : 0.0)
-                    .sku("SKU-" + product.getId() + "-" + System.currentTimeMillis())
+                    .price(p)
+                    .originalPrice(p)
+                    .sku("SKU-" + product.getId() + "-1-" + System.currentTimeMillis())
                     .isTopping(false)
                     .build();
             productVariantRepository.save(variant);
@@ -111,16 +130,19 @@ public class MenuServiceImpl implements MenuService {
         Product product = productRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy món ăn với ID: " + id));
 
-        if (request.getCategoryId() != null) {
-            Category category = categoryRepository.findById(request.getCategoryId())
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy danh mục"));
-            product.setCategory(category);
+        Long catId = request.getResolvedCategoryId();
+        if (catId != null) {
+            Category category = categoryRepository.findById(catId).orElse(null);
+            if (category != null) {
+                product.setCategory(category);
+            }
         }
 
         if (request.getName() != null) product.setName(request.getName().trim());
         if (request.getDescription() != null) product.setDescription(request.getDescription());
         if (request.getImageUrl() != null) product.setImagePath(request.getImageUrl().trim());
         if (request.getStatus() != null) product.setActive("ACTIVE".equalsIgnoreCase(request.getStatus()));
+        product.setQuantity(request.getQuantity());
 
         product = productRepository.save(product);
 
@@ -133,12 +155,15 @@ public class MenuServiceImpl implements MenuService {
                     log.warn("Cannot delete variant {} due to references", pv.getId());
                 }
             }
+            int vIndex = 1;
             for (MenuItemRequest.VariantRequest vr : request.getVariants()) {
+                double p = vr.getPriceVnd() != null ? vr.getPriceVnd().doubleValue() : 0.0;
                 ProductVariant variant = ProductVariant.builder()
                         .product(product)
-                        .name(vr.getName().trim())
-                        .price(vr.getPriceVnd() != null ? vr.getPriceVnd().doubleValue() : 0.0)
-                        .sku("SKU-" + product.getId() + "-" + System.currentTimeMillis())
+                        .name(vr.getName() != null && !vr.getName().trim().isEmpty() ? vr.getName().trim() : product.getName())
+                        .price(p)
+                        .originalPrice(p)
+                        .sku("SKU-" + product.getId() + "-" + vIndex++ + "-" + System.currentTimeMillis())
                         .isTopping(false)
                         .build();
                 productVariantRepository.save(variant);
@@ -249,6 +274,7 @@ public class MenuServiceImpl implements MenuService {
                 .description(product.getDescription())
                 .priceVnd(priceVnd)
                 .imageUrl(product.getImagePath())
+                .quantity(product.getQuantity())
                 .status(product.isActive() ? "ACTIVE" : "INACTIVE")
                 .category(product.getCategory() != null
                         ? MenuItemResponse.CategoryInfo.builder()

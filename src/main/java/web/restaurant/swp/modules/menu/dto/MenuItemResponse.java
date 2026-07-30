@@ -18,6 +18,7 @@ public class MenuItemResponse {
     private String description;
     private BigDecimal priceVnd;
     private String imageUrl;
+    private Integer quantity;
     private String status;
     private CategoryInfo category;
     private List<VariantInfo> variants;

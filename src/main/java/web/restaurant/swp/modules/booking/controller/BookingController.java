@@ -463,7 +463,16 @@ public class BookingController {
                     String returnUrl = "http://localhost:3000/booking-history?status=success";
                     String cancelUrl = "http://localhost:3000/booking-history?status=cancel";
                     
-                    double amount = (updated.getPendingUpdateJson() != null) ? 100000.0 : updated.getDepositAmount();
+                    double amount = (updated.getDepositAmount() != null && updated.getDepositAmount() > 0) ? updated.getDepositAmount() : 100000.0;
+                    if (updated.getPendingUpdateJson() != null) {
+                        try {
+                            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                            Map<String, Object> map = mapper.readValue(updated.getPendingUpdateJson(), Map.class);
+                            if (map.get("depositAmount") != null) {
+                                amount = ((Number) map.get("depositAmount")).doubleValue();
+                            }
+                        } catch (Exception e) {}
+                    }
                     Map<String, Object> payosData = payOSHelper.createPaymentLink(
                             updated.getOrderCode(),
                             amount,

@@ -51,8 +51,9 @@ public class ProductVariant {
     @Column(nullable = false)
     private Double price; // Selling price
 
-    @Column(name = "original_price", nullable = false)
-    private Double originalPrice; // Cost price
+    @Builder.Default
+    @Column(name = "original_price")
+    private Double originalPrice = 0.0; // Cost price
 
     @Column(nullable = false)
     private String sku; // Unique stock keeping unit

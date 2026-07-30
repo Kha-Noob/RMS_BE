@@ -18,8 +18,19 @@ public class MenuItemRequest {
     private BigDecimal priceVnd;
     private String imageUrl;
     private Long categoryId;
+    private CategoryObj category;
+    private Integer quantity;
     private String status;
     private List<VariantRequest> variants;
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class CategoryObj {
+        private Long id;
+        private String name;
+    }
 
     @Data
     @NoArgsConstructor
@@ -29,5 +40,11 @@ public class MenuItemRequest {
         private Long id;
         private String name;
         private BigDecimal priceVnd;
+    }
+
+    public Long getResolvedCategoryId() {
+        if (categoryId != null) return categoryId;
+        if (category != null && category.getId() != null) return category.getId();
+        return null;
     }
 }

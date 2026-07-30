@@ -47,7 +47,7 @@ public class Product {
     @Column(columnDefinition = "TEXT")
     private String description;
 
-    @Column(name = "image_path")
+    @Column(name = "image_path", columnDefinition = "TEXT")
     private String imagePath;
 
     @ManyToOne(fetch = FetchType.EAGER)
@@ -60,6 +60,9 @@ public class Product {
 
     @Column(name = "ingredients", columnDefinition = "TEXT")
     private String ingredients;
+
+    @Column(name = "quantity")
+    private Integer quantity;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "tenant_id")

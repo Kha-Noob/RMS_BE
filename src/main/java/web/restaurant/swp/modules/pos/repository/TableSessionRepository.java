@@ -36,6 +36,7 @@ import java.util.Optional;
 @Repository
 public interface TableSessionRepository extends JpaRepository<TableSession, Long> {
     Optional<TableSession> findByTableIdAndStatus(Long tableId, String status);
+    List<TableSession> findAllByTableIdAndStatusOrderByIdDesc(Long tableId, String status);
     List<TableSession> findByTableRoomBranchBranchIdAndStatus(String branchId, String status);
     boolean existsByTableId(Long tableId);
     Optional<TableSession> findByOrderCode(Long orderCode);

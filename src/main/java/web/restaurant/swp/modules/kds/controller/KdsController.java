@@ -31,13 +31,13 @@ public class KdsController {
     private final BranchAccessService branchAccessService;
 
     @GetMapping("/api/kds/orders")
-    public ResponseEntity<?> getKdsOrders() {
+    public ResponseEntity<?> getKdsOrders(@RequestParam(required = false) String branchId) {
         try {
             BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
-            String branchId = branchAccessService.validateAndGetBranchId(null, error);
+            String targetBranchId = branchAccessService.validateAndGetBranchId(branchId, error);
             if (error.hasError()) return error.toResponse();
 
-            List<Order> orders = orderRepository.findByBranchId(branchId);
+            List<Order> orders = orderRepository.findByBranchId(targetBranchId);
             List<Order> activeOrders = orders.stream()
                     .filter(o -> {
                         String s = o.getStatus();
@@ -71,7 +71,9 @@ public class KdsController {
                     }
                 }
                 oMap.put("items", detailList);
-                result.add(oMap);
+                if (!detailList.isEmpty()) {
+                    result.add(oMap);
+                }
             }
             return ResponseEntity.ok(result);
         } catch (Exception e) {
