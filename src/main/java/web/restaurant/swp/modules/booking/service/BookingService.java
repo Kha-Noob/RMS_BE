@@ -270,7 +270,7 @@ public class BookingService {
         if (booking.getOrderedItemsJson() != null && !booking.getOrderedItemsJson().trim().isEmpty()) {
             // If they ordered in advance, require a deposit
             if (booking.getDepositAmount() == null || booking.getDepositAmount() <= 0) {
-                booking.setDepositAmount(100000.0); // Default flat deposit
+                booking.setDepositAmount(calculateDepositAmount(booking.getOrderedItemsJson()));
             }
         }
 
@@ -367,10 +367,13 @@ public class BookingService {
             try {
                 com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
                 java.util.Map<String, Object> map = new java.util.HashMap<>();
+                double depAmt = (updated.getDepositAmount() != null && updated.getDepositAmount() > 0)
+                        ? updated.getDepositAmount()
+                        : calculateDepositAmount(updated.getOrderedItemsJson());
                 map.put("bookingTime", (updated.getBookingTime() != null ? updated.getBookingTime() : existing.getBookingTime()).toString());
                 map.put("guests", updated.getGuests() != null ? updated.getGuests() : existing.getGuests());
                 map.put("orderedItemsJson", updated.getOrderedItemsJson());
-                map.put("depositAmount", 100000.0);
+                map.put("depositAmount", depAmt);
                 existing.setPendingUpdateJson(mapper.writeValueAsString(map));
             } catch (Exception e) {
                 throw new RuntimeException("Lỗi cấu hình cập nhật món ăn: " + e.getMessage());
@@ -587,6 +590,31 @@ public class BookingService {
             } catch (Exception fileEx) {
                 log.error("[EMAIL SERVICE FALLBACK] Failed to write fallback email file: {}", fileEx.getMessage());
             }
+        }
+    }
+
+    public double calculateDepositAmount(String orderedItemsJson) {
+        if (orderedItemsJson == null || orderedItemsJson.trim().isEmpty()) {
+            return 100000.0;
+        }
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            java.util.List<java.util.Map<String, Object>> items = mapper.readValue(
+                orderedItemsJson, new com.fasterxml.jackson.core.type.TypeReference<java.util.List<java.util.Map<String, Object>>>() {}
+            );
+            double subtotal = 0.0;
+            for (java.util.Map<String, Object> item : items) {
+                double price = item.get("price") != null ? ((Number) item.get("price")).doubleValue() : 0.0;
+                int qty = item.get("quantity") != null ? ((Number) item.get("quantity")).intValue() : 1;
+                subtotal += price * qty;
+            }
+            double grandTotal = subtotal * 1.15; // Include VAT 10% and Service charge 5%
+            if (grandTotal > 0 && grandTotal < 100000.0) {
+                return Math.round(grandTotal);
+            }
+            return 100000.0;
+        } catch (Exception e) {
+            return 100000.0;
         }
     }
 }
