@@ -912,37 +912,37 @@ public class PosController {
                     .findFirst()
                     .orElse(null);
 
-            String status = isToday ? t.getStatus() : (booking != null ? "RESERVED" : "EMPTY");
-            if (isToday && booking != null && !"OCCUPIED".equalsIgnoreCase(status) && !"SERVED".equalsIgnoreCase(status)) {
+            Optional<TableSession> sessionOpt = findActiveSessionForTable(t.getId());
+
+            String status = t.getStatus();
+            if (sessionOpt.isPresent() && "SERVED".equalsIgnoreCase(sessionOpt.get().getStatus())) {
+                status = "SERVED";
+            } else if ("SERVED".equalsIgnoreCase(t.getStatus())) {
+                status = "SERVED";
+            } else if ("OCCUPIED".equalsIgnoreCase(t.getStatus())) {
+                status = "OCCUPIED";
+            } else if (booking != null) {
                 status = "RESERVED";
+            } else {
+                status = "EMPTY";
             }
 
-            if (isToday) {
-                Optional<TableSession> sessionOpt = findActiveSessionForTable(t.getId());
-                if (sessionOpt.isPresent()) {
-                    TableSession session = sessionOpt.get();
-                    if ("SERVED".equalsIgnoreCase(session.getStatus())) {
-                        status = "SERVED";
-                    }
-                    map.put("activeSessionId", session.getId());
-                    map.put("sessionOpenedAt", session.getCheckInTime() != null ? session.getCheckInTime().toString() : null);
+            if (sessionOpt.isPresent()) {
+                TableSession session = sessionOpt.get();
+                map.put("activeSessionId", session.getId());
+                map.put("sessionOpenedAt", session.getCheckInTime() != null ? session.getCheckInTime().toString() : null);
 
-                    List<Order> orders = orderRepository.findBySessionId(session.getId());
-                    double total = 0.0;
-                    for (Order o : orders) {
-                        String st = o.getStatus();
-                        if ("PENDING".equalsIgnoreCase(st) || "SENT".equalsIgnoreCase(st)
-                                || "COOKING".equalsIgnoreCase(st) || "READY".equalsIgnoreCase(st)
-                                || "SERVED".equalsIgnoreCase(st)) {
-                            total += o.getTotalAmount() != null ? o.getTotalAmount() : 0.0;
-                        }
+                List<Order> orders = orderRepository.findBySessionId(session.getId());
+                double total = 0.0;
+                for (Order o : orders) {
+                    String st = o.getStatus();
+                    if ("PENDING".equalsIgnoreCase(st) || "SENT".equalsIgnoreCase(st)
+                            || "COOKING".equalsIgnoreCase(st) || "READY".equalsIgnoreCase(st)
+                            || "SERVED".equalsIgnoreCase(st)) {
+                        total += o.getTotalAmount() != null ? o.getTotalAmount() : 0.0;
                     }
-                    map.put("sessionTotalAmount", total);
-                } else {
-                    map.put("activeSessionId", null);
-                    map.put("sessionOpenedAt", null);
-                    map.put("sessionTotalAmount", 0.0);
                 }
+                map.put("sessionTotalAmount", total);
             } else {
                 map.put("activeSessionId", null);
                 map.put("sessionOpenedAt", null);
