@@ -67,7 +67,9 @@ public class OrderService {
                 .paymentStatus("UNPAID")
                 .build();
 
-        table.setStatus("OCCUPIED");
+        if (!"RESERVED".equalsIgnoreCase(table.getStatus())) {
+            table.setStatus("OCCUPIED");
+        }
         table.setGuestCount(2); // default
         tableRepository.save(table);
 
