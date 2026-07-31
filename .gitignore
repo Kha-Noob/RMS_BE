@@ -41,6 +41,6 @@ build/
 *.log
 logs/
 
-### OS ###
-.DS_Store
-Thumbs.db
+### Uploads ###
+uploads/
+
