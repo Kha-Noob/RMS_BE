@@ -106,8 +106,12 @@ public class ReviewAdminController {
                 continue;
             }
 
-            // Auto-generate AI response suggestion if not yet created
-            if (r.getResponseVi() == null || r.getResponseVi().trim().isEmpty() || r.getResponseEn() == null || r.getResponseEn().trim().isEmpty()) {
+            // Auto-generate AI response suggestion if not yet created OR if old single-response format (no |||)
+            boolean missingVi = r.getResponseVi() == null || r.getResponseVi().trim().isEmpty();
+            boolean missingEn = r.getResponseEn() == null || r.getResponseEn().trim().isEmpty();
+            boolean oldFormat = (r.getResponseVi() != null && !r.getResponseVi().contains("|||"))
+                             || (r.getResponseEn() != null && !r.getResponseEn().contains("|||"));
+            if (missingVi || missingEn || oldFormat) {
                 try {
                     aiReviewAgent.processReviewAndGenerateResolution(r);
                 } catch (Exception e) {
@@ -116,6 +120,7 @@ public class ReviewAdminController {
             }
 
             filtered.add(r);
+
         }
 
         // Sort descending by created time
