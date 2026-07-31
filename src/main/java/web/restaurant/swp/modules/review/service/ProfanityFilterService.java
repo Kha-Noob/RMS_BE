@@ -71,8 +71,25 @@ public class ProfanityFilterService {
 
     public synchronized void importWords(String content) throws IOException {
         storageFile.getParentFile().mkdirs();
-        Files.writeString(storageFile.toPath(), content, StandardCharsets.UTF_8);
-        loadWordsFromFile();
+        if (storageFile.exists()) {
+            loadWordsFromFile();
+        }
+
+        if (content != null && !content.isBlank()) {
+            String[] lines = content.split("\\r?\\n");
+            for (String line : lines) {
+                String rawWord = line.trim();
+                if (!rawWord.isEmpty()) {
+                    rawBlacklistedWords.add(rawWord);
+                    String normalized = normalizeText(rawWord);
+                    if (!normalized.isEmpty()) {
+                        normalizedBlacklistedWords.add(normalized);
+                    }
+                }
+            }
+        }
+
+        Files.write(storageFile.toPath(), rawBlacklistedWords, StandardCharsets.UTF_8);
     }
 
     public boolean hasProfanity(String text) {
