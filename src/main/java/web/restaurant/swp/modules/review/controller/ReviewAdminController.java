@@ -106,6 +106,15 @@ public class ReviewAdminController {
                 continue;
             }
 
+            // Auto-generate AI response suggestion if not yet created
+            if (r.getResponseVi() == null || r.getResponseVi().trim().isEmpty() || r.getResponseEn() == null || r.getResponseEn().trim().isEmpty()) {
+                try {
+                    aiReviewAgent.processReviewAndGenerateResolution(r);
+                } catch (Exception e) {
+                    log.error("Error auto generating AI reply for review {}", r.getId(), e);
+                }
+            }
+
             filtered.add(r);
         }
 
