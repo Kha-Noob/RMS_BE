@@ -150,9 +150,6 @@ public class PosController {
     private Optional<TableSession> findActiveSessionForTable(Long tableId) {
         List<TableSession> activeSessions = tableSessionRepository.findAllByTableIdAndStatusOrderByIdDesc(tableId, "ACTIVE");
         if (activeSessions.isEmpty()) {
-            activeSessions = tableSessionRepository.findAllByTableIdAndStatusOrderByIdDesc(tableId, "SERVED");
-        }
-        if (activeSessions.isEmpty()) {
             return Optional.empty();
         }
         if (activeSessions.size() > 1) {
@@ -229,35 +226,6 @@ public class PosController {
             authService.logAudit(user, "OPEN_SESSION", "Order", session.getId().toString(),
                 "M? ca (Check-in) cho b?n " + session.getTable().getName(), "127.0.0.1", session.getTable().getRoom().getBranch().getBranchId());
             return ResponseEntity.ok(session);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
-    }
-
-    @PostMapping("/api/pos/session/complete-service")
-    public ResponseEntity<?> completeService(@RequestParam Long sessionId) {
-        try {
-            TableSession session = tableSessionRepository.findById(sessionId)
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy phiên bàn."));
-
-            String entityBranchId = session.getTable().getRoom().getBranch().getBranchId();
-            BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
-            branchAccessService.validateEntityBranch(entityBranchId, error);
-            if (error.hasError()) return error.toResponse();
-
-            session.setStatus("SERVED");
-            tableSessionRepository.save(session);
-
-            TableEntity table = session.getTable();
-            table.setStatus("SERVED");
-            tableRepository.save(table);
-
-            User user = getLoggedInUser();
-            authService.logAudit(user, "COMPLETE_SERVICE", "Order", sessionId.toString(),
-                "Đã hoàn thành phục vụ bàn " + table.getName(), "127.0.0.1", entityBranchId);
-
-            KdsWebSocketHandler.broadcast("ORDER_STATE_CHANGED");
-            return ResponseEntity.ok(Map.of("message", "Đã hoàn thành phục vụ bàn " + table.getName()));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
@@ -873,20 +841,12 @@ public class PosController {
         }
     }
 
-    private List<Map<String, Object>> enrichTables(List<TableEntity> list, String branchId, String dateStr) {
+    private List<Map<String, Object>> enrichTables(List<TableEntity> list, String branchId) {
         List<Map<String, Object>> response = new ArrayList<>();
 
-        LocalDate targetDate;
-        try {
-            targetDate = (dateStr != null && !dateStr.isBlank()) ? LocalDate.parse(dateStr) : LocalDate.now();
-        } catch (Exception e) {
-            targetDate = LocalDate.now();
-        }
-        boolean isToday = targetDate.equals(LocalDate.now());
-        boolean isFuture = targetDate.isAfter(LocalDate.now());
-
-        LocalDateTime startOfDay = targetDate.atStartOfDay();
-        LocalDateTime endOfDay = targetDate.atTime(23, 59, 59);
+        LocalDate today = LocalDate.now();
+        LocalDateTime startOfDay = today.atStartOfDay();
+        LocalDateTime endOfDay = today.atTime(23, 59, 59);
         List<Booking> dateBookings = (branchId != null && !branchId.isBlank())
                 ? bookingRepository.findByBranchIdAndStatusNotAndBookingTimeBetween(branchId, "CANCELLED", startOfDay, endOfDay)
                 : Collections.emptyList();
@@ -913,73 +873,33 @@ public class PosController {
                     .findFirst()
                     .orElse(null);
 
+            Optional<TableSession> sessionOpt = findActiveSessionForTable(t.getId());
             String status;
-            if (booking != null) {
-                // Table has a reservation for this date -> RESERVED
-                status = "RESERVED";
-                if (isToday) {
-                    Optional<TableSession> sessionOpt = findActiveSessionForTable(t.getId());
-                    if (sessionOpt.isPresent()) {
-                        TableSession session = sessionOpt.get();
-                        map.put("activeSessionId", session.getId());
-                        map.put("sessionOpenedAt", session.getCheckInTime() != null ? session.getCheckInTime().toString() : null);
+            if (sessionOpt.isPresent()) {
+                TableSession session = sessionOpt.get();
+                status = "OCCUPIED";
+                map.put("activeSessionId", session.getId());
+                map.put("sessionOpenedAt", session.getCheckInTime() != null ? session.getCheckInTime().toString() : null);
 
-                        List<Order> orders = orderRepository.findBySessionId(session.getId());
-                        double total = 0.0;
-                        for (Order o : orders) {
-                            String st = o.getStatus();
-                            if ("PENDING".equalsIgnoreCase(st) || "SENT".equalsIgnoreCase(st)
-                                    || "COOKING".equalsIgnoreCase(st) || "READY".equalsIgnoreCase(st)
-                                    || "SERVED".equalsIgnoreCase(st)) {
-                                total += o.getTotalAmount() != null ? o.getTotalAmount() : 0.0;
-                            }
-                        }
-                        map.put("sessionTotalAmount", total);
-                    } else {
-                        map.put("activeSessionId", null);
-                        map.put("sessionOpenedAt", null);
-                        map.put("sessionTotalAmount", 0.0);
+                List<Order> orders = orderRepository.findBySessionId(session.getId());
+                double total = 0.0;
+                for (Order o : orders) {
+                    String st = o.getStatus();
+                    if ("PENDING".equalsIgnoreCase(st) || "SENT".equalsIgnoreCase(st)
+                            || "COOKING".equalsIgnoreCase(st) || "READY".equalsIgnoreCase(st)
+                            || "SERVED".equalsIgnoreCase(st)) {
+                        total += o.getTotalAmount() != null ? o.getTotalAmount() : 0.0;
                     }
-                } else {
-                    map.put("activeSessionId", null);
-                    map.put("sessionOpenedAt", null);
-                    map.put("sessionTotalAmount", 0.0);
                 }
-            } else if (isToday) {
-                // Today: show live real-time table session & status if no booking
-                Optional<TableSession> sessionOpt = findActiveSessionForTable(t.getId());
-                if (sessionOpt.isPresent()) {
-                    TableSession session = sessionOpt.get();
-                    status = "SERVED".equalsIgnoreCase(session.getStatus()) ? "SERVED" : "OCCUPIED";
-                    map.put("activeSessionId", session.getId());
-                    map.put("sessionOpenedAt", session.getCheckInTime() != null ? session.getCheckInTime().toString() : null);
-
-                    List<Order> orders = orderRepository.findBySessionId(session.getId());
-                    double total = 0.0;
-                    for (Order o : orders) {
-                        String st = o.getStatus();
-                        if ("PENDING".equalsIgnoreCase(st) || "SENT".equalsIgnoreCase(st)
-                                || "COOKING".equalsIgnoreCase(st) || "READY".equalsIgnoreCase(st)
-                                || "SERVED".equalsIgnoreCase(st)) {
-                            total += o.getTotalAmount() != null ? o.getTotalAmount() : 0.0;
-                        }
-                    }
-                    map.put("sessionTotalAmount", total);
-                } else {
-                    if ("SERVED".equalsIgnoreCase(t.getStatus())) {
-                        status = "SERVED";
-                    } else if ("OCCUPIED".equalsIgnoreCase(t.getStatus())) {
-                        status = "OCCUPIED";
-                    } else {
-                        status = "EMPTY";
-                    }
-                    map.put("activeSessionId", null);
-                    map.put("sessionOpenedAt", null);
-                    map.put("sessionTotalAmount", 0.0);
-                }
+                map.put("sessionTotalAmount", total);
             } else {
-                // Other dates with no booking: EMPTY
-                status = "EMPTY";
+                if (booking != null) {
+                    status = "RESERVED";
+                } else if ("OCCUPIED".equalsIgnoreCase(t.getStatus())) {
+                    status = "OCCUPIED";
+                } else {
+                    status = "EMPTY";
+                }
                 map.put("activeSessionId", null);
                 map.put("sessionOpenedAt", null);
                 map.put("sessionTotalAmount", 0.0);
@@ -1027,9 +947,7 @@ public class PosController {
     }
 
     @GetMapping("/api/pos/tables")
-    public ResponseEntity<?> getTables(
-            @RequestParam(required = false) Long roomId,
-            @RequestParam(required = false) String date) {
+    public ResponseEntity<?> getTables(@RequestParam(required = false) Long roomId) {
         try {
             BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
             String branchId = branchAccessService.validateAndGetBranchId(null, error);
@@ -1047,11 +965,97 @@ public class PosController {
                 tables = tableRepository.findByRoomBranchBranchIdOrderByRoomDisplayOrderAscIdAsc(branchId);
             }
 
-            return ResponseEntity.ok(enrichTables(tables, branchId, date));
+            return ResponseEntity.ok(enrichTables(tables, branchId));
         } catch (NoSuchElementException e) {
             return message(404, "Không tìm thấy dữ liệu");
         } catch (Exception e) {
             return message(400, e.getMessage());
+        }
+    }
+
+    @GetMapping("/api/pos/bookings")
+    public ResponseEntity<?> getPosBookings(
+            @RequestParam(required = false) String date,
+            @RequestParam(required = false) String status) {
+        try {
+            BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+            String branchId = branchAccessService.validateAndGetBranchId(null, error);
+            if (error.hasError()) return error.toResponse();
+
+            LocalDate targetDate;
+            try {
+                targetDate = (date != null && !date.isBlank()) ? LocalDate.parse(date) : LocalDate.now();
+            } catch (Exception e) {
+                targetDate = LocalDate.now();
+            }
+
+            LocalDateTime startOfDay = targetDate.atStartOfDay();
+            LocalDateTime endOfDay = targetDate.atTime(23, 59, 59);
+
+            List<Booking> bookings = bookingRepository.findByBranchIdAndBookingTimeBetween(branchId, startOfDay, endOfDay);
+            if (status != null && !status.isBlank()) {
+                bookings = bookings.stream()
+                        .filter(b -> status.equalsIgnoreCase(b.getStatus()))
+                        .collect(Collectors.toList());
+            } else {
+                bookings = bookings.stream()
+                        .filter(b -> !"CANCELLED".equalsIgnoreCase(b.getStatus()))
+                        .collect(Collectors.toList());
+            }
+
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            List<Map<String, Object>> response = new ArrayList<>();
+
+            for (Booking b : bookings) {
+                Map<String, Object> map = new LinkedHashMap<>();
+                map.put("id", b.getId());
+                map.put("customerName", b.getCustomerName());
+                map.put("customerPhone", b.getCustomerPhone());
+                map.put("customerEmail", b.getCustomerEmail());
+                map.put("bookingTime", b.getBookingTime() != null ? b.getBookingTime().toString() : null);
+                map.put("guests", b.getGuests());
+                map.put("status", b.getStatus());
+                map.put("tableId", b.getTableId());
+                map.put("tableLabel", b.getTableLabel());
+                map.put("notes", b.getNotes());
+                map.put("dietaryNotes", b.getDietaryNotes());
+                map.put("allergyPeanut", b.getAllergyPeanut());
+                map.put("allergyGluten", b.getAllergyGluten());
+                map.put("allergyOthers", b.getAllergyOthers());
+                map.put("depositAmount", b.getDepositAmount() != null ? b.getDepositAmount() : 0.0);
+                map.put("depositPaid", b.getDepositPaid() != null ? b.getDepositPaid() : false);
+                map.put("paymentStatus", b.getPaymentStatus());
+                map.put("source", b.getSource());
+
+                List<Object> items = new ArrayList<>();
+                if (b.getOrderedItemsJson() != null && !b.getOrderedItemsJson().isBlank()) {
+                    try {
+                        String rawJson = b.getOrderedItemsJson().trim();
+                        if (rawJson.startsWith("\"") && rawJson.endsWith("\"")) {
+                            try {
+                                rawJson = mapper.readValue(rawJson, String.class);
+                            } catch (Exception ignored) {}
+                        }
+                        items = mapper.readValue(rawJson, new com.fasterxml.jackson.core.type.TypeReference<List<Object>>() {});
+                    } catch (Exception ex) {
+                        log.warn("Failed to parse orderedItemsJson for booking id {}: {}", b.getId(), ex.getMessage());
+                    }
+                }
+                map.put("orderedItems", items);
+                response.add(map);
+            }
+
+            response.sort((m1, m2) -> {
+                String t1 = (String) m1.get("bookingTime");
+                String t2 = (String) m2.get("bookingTime");
+                if (t1 == null) return 1;
+                if (t2 == null) return -1;
+                return t1.compareTo(t2);
+            });
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
 
