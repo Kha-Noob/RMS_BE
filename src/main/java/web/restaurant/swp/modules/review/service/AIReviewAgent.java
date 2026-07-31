@@ -68,62 +68,57 @@ public class AIReviewAgent {
             }
         }
 
-        // Build contextual guidance based on rating
-        String ratingGuidance;
-        if (review.getRating() <= 2) {
-            ratingGuidance = "Đây là đánh giá RẤT TỆ (1-2 sao). Khách hàng có thể rất thất vọng. "
-                    + "Hãy sinh 3 câu trả lời KHÁC NHAU về phong cách:\n"
-                    + "  - Câu 1: Xin lỗi chân thành, hứa khắc phục và mời quay lại.\n"
-                    + "  - Câu 2: Lắng nghe và hỏi thêm phần chưa vừa ý để cải thiện.\n"
-                    + "  - Câu 3: Xin lỗi và đề nghị liên hệ trực tiếp để giải quyết vấn đề.";
-        } else if (review.getRating() == 3) {
-            ratingGuidance = "Đây là đánh giá TRUNG BÌNH (3 sao). Khách hàng có thể hài lòng một phần. "
-                    + "Hãy sinh 3 câu trả lời KHÁC NHAU về phong cách:\n"
-                    + "  - Câu 1: Cảm ơn, ghi nhận và hứa cải thiện.\n"
-                    + "  - Câu 2: Hỏi về phần nào chưa đáp ứng mong đợi để khắc phục.\n"
-                    + "  - Câu 3: Cảm ơn và mời trải nghiệm lại để thấy sự thay đổi.";
-        } else if (review.getRating() == 4) {
-            ratingGuidance = "Đây là đánh giá TỐT (4 sao). Khách hàng khá hài lòng. "
-                    + "Hãy sinh 3 câu trả lời KHÁC NHAU về phong cách:\n"
-                    + "  - Câu 1: Cảm ơn chân thành và vui mừng khách hài lòng.\n"
-                    + "  - Câu 2: Cảm ơn và hỏi nhẹ nhàng về điểm nào chưa đạt 5 sao.\n"
-                    + "  - Câu 3: Cảm ơn, tự hào về đội ngũ và mời quay lại.";
-        } else {
-            ratingGuidance = "Đây là đánh giá XUẤT SẮC (5 sao). Khách hàng rất hài lòng. "
-                    + "Hãy sinh 3 câu trả lời KHÁC NHAU về phong cách:\n"
-                    + "  - Câu 1: Cảm ơn nhiệt tình, tự hào về chất lượng.\n"
-                    + "  - Câu 2: Cảm ơn và chia sẻ niềm vui, mời chia sẻ trải nghiệm với bạn bè.\n"
-                    + "  - Câu 3: Cảm ơn, khẳng định cam kết duy trì chất lượng tốt nhất.";
-        }
+        // Build prompt based on actual review content
+        String customerName = review.getCustomerName();
+        String comment = review.getComment() != null ? review.getComment() : "";
+        int rating = review.getRating();
 
-        String prompt = "Bạn là Trợ lý AI Chăm sóc Khách hàng của nhà hàng.\n"
-                + "Hãy phân tích đánh giá sau và đề xuất phản hồi:\n"
-                + "Khách hàng: \"" + review.getCustomerName() + "\"\n"
-                + "Đánh giá: " + review.getRating() + " sao\n"
-                + "Bình luận: \"" + (review.getComment() != null ? review.getComment() : "Không viết bình luận") + "\"\n"
-                + "Đơn hàng liên quan (ID: " + (review.getOrderId() != null ? review.getOrderId() : "N/A") + "): Tổng tiền " + orderTotal + " VNĐ. Các món đã gọi: [" + orderItemsText + "].\n\n"
-                + ratingGuidance + "\n\n"
-                + "Hãy thực hiện:\n"
-                + "1. Phân tích cảm xúc của bình luận (sentiment): POSITIVE, NEGATIVE, hoặc NEUTRAL.\n"
-                + "2. Viết 3 câu phản hồi tiếng Việt KHÁC NHAU về giọng điệu và cách tiếp cận (suggestion1Vi, suggestion2Vi, suggestion3Vi), mỗi câu 1-3 câu, tự nhiên, phù hợp tone nhà hàng.\n"
-                + "3. Viết 3 câu phản hồi tiếng Anh tương đương (suggestion1En, suggestion2En, suggestion3En).\n"
-                + "4. Chỉ dành cho cảm xúc NEGATIVE, đề xuất đền bù thích hợp:\n"
-                + "   - Loại voucher (voucherType): \"PercentDiscount\", \"FlatDiscount\", hoặc \"None\"\n"
-                + "   - Giá trị voucher (voucherValue): số tiền hoặc % (0 nếu None)\n"
-                + "   - Lý do đề xuất (reasonForValue).\n\n"
-                + "Hãy trả về kết quả định dạng JSON thô với cấu trúc chính xác sau (không kèm mã markdown hay ký tự khác, chỉ trả về chuỗi JSON thô hợp lệ):\n"
+        // Generate 3 DIVERSE, PERSONALIZED suggestions based on what customer actually said
+        String prompt = "Bạn là nhân viên chăm sóc khách hàng chuyên nghiệp của một nhà hàng cao cấp.\n"
+                + "Nhiệm vụ: Viết 3 câu trả lời THẬT SỰ KHÁC NHAU về giọng điệu cho đánh giá sau.\n\n"
+                + "=== THÔNG TIN ĐÁNH GIÁ ===\n"
+                + "Tên khách hàng: " + customerName + "\n"
+                + "Số sao: " + rating + "/5\n"
+                + "Nội dung bình luận: \"" + (comment.isEmpty() ? "(Không viết bình luận)" : comment) + "\"\n"
+                + "Món đã gọi: " + orderItemsText + "\n"
+                + "Tổng hóa đơn: " + orderTotal + " VNĐ\n\n"
+                + "=== YÊU CẦU QUAN TRỌNG ===\n"
+                + "1. Mỗi câu trả lời PHẢI ĐỀ CẬP CỤ THỂ đến nội dung bình luận của khách (đề cập đến món ăn, không gian, dịch vụ... mà khách đã nhắc đến).\n"
+                + "2. 3 câu phải KHÁC NHAU HOÀN TOÀN về:\n"
+                + "   - Cách mở đầu (không dùng cùng một từ đầu tiên)\n"
+                + "   - Giọng điệu (thân thiện/trịnh trọng/hài hước nhẹ)\n"
+                + "   - Nội dung nhấn mạnh khác nhau\n"
+                + "3. TUYỆT ĐỐI KHÔNG dùng câu chung chung như 'Cảm ơn bạn đã đánh giá. Rất mong được phục vụ bạn lần sau'.\n"
+                + "4. Độ dài: mỗi câu 1-3 câu, ngắn gọn, tự nhiên.\n\n"
+                + (rating >= 4
+                    ? "Hướng dẫn theo mức độ đánh giá (" + rating + " sao - TÍCH CỰC):\n"
+                    + "  - Câu 1 (Cảm ơn nhiệt tình): Cảm ơn chân thành, nhắc lại điều khách khen cụ thể\n"
+                    + "  - Câu 2 (Tự hào chia sẻ): Tự hào về món/dịch vụ khách khen, mời giới thiệu bạn bè\n"
+                    + "  - Câu 3 (Cam kết chất lượng): Cam kết duy trì và cải thiện, hẹn gặp lại\n"
+                    : rating == 3
+                    ? "Hướng dẫn theo mức độ đánh giá (" + rating + " sao - TRUNG BÌNH):\n"
+                    + "  - Câu 1 (Ghi nhận cân bằng): Cảm ơn, ghi nhận điểm tốt và điểm cần cải thiện\n"
+                    + "  - Câu 2 (Hỏi thêm): Hỏi cụ thể điều gì chưa vừa ý để cải thiện\n"
+                    + "  - Câu 3 (Hứa cải thiện): Cảm ơn và hứa khắc phục, mời trải nghiệm lại\n"
+                    : "Hướng dẫn theo mức độ đánh giá (" + rating + " sao - TIÊU CỰC):\n"
+                    + "  - Câu 1 (Xin lỗi chân thành): Xin lỗi sâu sắc về vấn đề cụ thể khách nêu ra\n"
+                    + "  - Câu 2 (Hỏi để giải quyết): Hỏi thêm chi tiết về vấn đề, đề nghị hỗ trợ trực tiếp\n"
+                    + "  - Câu 3 (Cam kết khắc phục): Hứa khắc phục ngay và mời quay lại với ưu đãi\n"
+                )
+                + "\n=== YÊU CẦU FORMAT ===\n"
+                + "Chỉ trả về JSON thuần túy, không có markdown, không có text ngoài JSON:\n"
                 + "{\n"
-                + "  \"sentiment\": \"POSITIVE\" hoặc \"NEGATIVE\" hoặc \"NEUTRAL\",\n"
-                + "  \"suggestion1Vi\": \"Câu trả lời tiếng Việt gợi ý 1...\",\n"
-                + "  \"suggestion2Vi\": \"Câu trả lời tiếng Việt gợi ý 2...\",\n"
-                + "  \"suggestion3Vi\": \"Câu trả lời tiếng Việt gợi ý 3...\",\n"
-                + "  \"suggestion1En\": \"Reply suggestion 1 in English...\",\n"
-                + "  \"suggestion2En\": \"Reply suggestion 2 in English...\",\n"
-                + "  \"suggestion3En\": \"Reply suggestion 3 in English...\",\n"
-                + "  \"voucherType\": \"PercentDiscount\" hoặc \"FlatDiscount\" hoặc \"None\",\n"
-                + "  \"voucherValue\": giá trị số,\n"
-                + "  \"reasonForValue\": \"Lý do...\"\n"
-                + "}\n";
+                + "  \"sentiment\": \"POSITIVE\" | \"NEGATIVE\" | \"NEUTRAL\",\n"
+                + "  \"suggestion1Vi\": \"câu 1 tiếng Việt...\",\n"
+                + "  \"suggestion2Vi\": \"câu 2 tiếng Việt...\",\n"
+                + "  \"suggestion3Vi\": \"câu 3 tiếng Việt...\",\n"
+                + "  \"suggestion1En\": \"reply 1 in English...\",\n"
+                + "  \"suggestion2En\": \"reply 2 in English...\",\n"
+                + "  \"suggestion3En\": \"reply 3 in English...\",\n"
+                + "  \"voucherType\": \"PercentDiscount\" | \"FlatDiscount\" | \"None\",\n"
+                + "  \"voucherValue\": 0,\n"
+                + "  \"reasonForValue\": \"reason...\"\n"
+                + "}";
 
 
 
@@ -152,52 +147,66 @@ public class AIReviewAgent {
                 if (response.statusCode() == 200) {
                     String body = response.body();
                     try {
-                        JsonNode root = new ObjectMapper().readTree(body);
+                        // Extract Gemini raw text
+                        ObjectMapper mapper = new ObjectMapper();
+                        JsonNode root = mapper.readTree(body);
                         String rawText = root.path("candidates").path(0).path("content").path("parts").path(0).path("text").asText();
-                        String jsonResponse = rawText;
+
+                        // Strip markdown code fences if present
+                        String jsonResponse = rawText.trim();
                         if (jsonResponse.contains("```json")) {
                             jsonResponse = jsonResponse.substring(jsonResponse.indexOf("```json") + 7);
-                            if (jsonResponse.contains("```")) {
-                                jsonResponse = jsonResponse.substring(0, jsonResponse.indexOf("```"));
-                            }
-                        } else if (jsonResponse.contains("```")) {
-                            jsonResponse = jsonResponse.substring(jsonResponse.indexOf("```") + 3);
-                            if (jsonResponse.contains("```")) {
-                                jsonResponse = jsonResponse.substring(0, jsonResponse.indexOf("```"));
-                            }
+                            int fence = jsonResponse.indexOf("```");
+                            if (fence != -1) jsonResponse = jsonResponse.substring(0, fence);
+                        } else if (jsonResponse.startsWith("```")) {
+                            jsonResponse = jsonResponse.substring(3);
+                            int fence = jsonResponse.indexOf("```");
+                            if (fence != -1) jsonResponse = jsonResponse.substring(0, fence);
+                        }
+                        // Find JSON object boundaries
+                        int jsonStart = jsonResponse.indexOf('{');
+                        int jsonEnd = jsonResponse.lastIndexOf('}');
+                        if (jsonStart != -1 && jsonEnd != -1 && jsonEnd > jsonStart) {
+                            jsonResponse = jsonResponse.substring(jsonStart, jsonEnd + 1);
+                        }
+                        jsonResponse = jsonResponse.trim();
+
+                        // Use Jackson for robust JSON parsing (handles escaped chars, commas, etc.)
+                        JsonNode parsed = mapper.readTree(jsonResponse);
+
+                        if (parsed.has("sentiment")) {
+                            parsedSentiment = parsed.get("sentiment").asText(parsedSentiment).toUpperCase();
                         }
 
-                        jsonResponse = jsonResponse.trim();
-                        parsedSentiment = extractJsonField(jsonResponse, "sentiment", parsedSentiment).toUpperCase();
+                        // Parse 3 suggestions using Jackson (safe for any content)
+                        String s1Vi = parsed.has("suggestion1Vi") ? parsed.get("suggestion1Vi").asText("") : "";
+                        String s2Vi = parsed.has("suggestion2Vi") ? parsed.get("suggestion2Vi").asText("") : "";
+                        String s3Vi = parsed.has("suggestion3Vi") ? parsed.get("suggestion3Vi").asText("") : "";
+                        String s1En = parsed.has("suggestion1En") ? parsed.get("suggestion1En").asText("") : "";
+                        String s2En = parsed.has("suggestion2En") ? parsed.get("suggestion2En").asText("") : "";
+                        String s3En = parsed.has("suggestion3En") ? parsed.get("suggestion3En").asText("") : "";
 
-                        // Parse 3 suggestions
-                        String s1Vi = extractJsonField(jsonResponse, "suggestion1Vi", "");
-                        String s2Vi = extractJsonField(jsonResponse, "suggestion2Vi", "");
-                        String s3Vi = extractJsonField(jsonResponse, "suggestion3Vi", "");
-                        String s1En = extractJsonField(jsonResponse, "suggestion1En", "");
-                        String s2En = extractJsonField(jsonResponse, "suggestion2En", "");
-                        String s3En = extractJsonField(jsonResponse, "suggestion3En", "");
-
-                        // Combine with ||| separator (non-empty only)
+                        // Combine non-empty suggestions with ||| separator
                         java.util.List<String> viParts = new java.util.ArrayList<>();
                         java.util.List<String> enParts = new java.util.ArrayList<>();
-                        if (!s1Vi.isEmpty()) viParts.add(s1Vi);
-                        if (!s2Vi.isEmpty()) viParts.add(s2Vi);
-                        if (!s3Vi.isEmpty()) viParts.add(s3Vi);
-                        if (!s1En.isEmpty()) enParts.add(s1En);
-                        if (!s2En.isEmpty()) enParts.add(s2En);
-                        if (!s3En.isEmpty()) enParts.add(s3En);
+                        if (!s1Vi.isBlank()) viParts.add(s1Vi.trim());
+                        if (!s2Vi.isBlank()) viParts.add(s2Vi.trim());
+                        if (!s3Vi.isBlank()) viParts.add(s3Vi.trim());
+                        if (!s1En.isBlank()) enParts.add(s1En.trim());
+                        if (!s2En.isBlank()) enParts.add(s2En.trim());
+                        if (!s3En.isBlank()) enParts.add(s3En.trim());
 
                         if (!viParts.isEmpty()) apologyVi = String.join("|||", viParts);
                         if (!enParts.isEmpty()) apologyEn = String.join("|||", enParts);
 
-                        vType = extractJsonField(jsonResponse, "voucherType", vType);
-                        String vValStr = extractJsonField(jsonResponse, "voucherValue", "0.0");
-                        try {
-                            vValue = Double.parseDouble(vValStr.replaceAll("[^0-9.]", ""));
-                        } catch (Exception ignored) {}
+                        if (parsed.has("voucherType")) vType = parsed.get("voucherType").asText(vType);
+                        if (parsed.has("voucherValue")) {
+                            try { vValue = parsed.get("voucherValue").asDouble(0.0); } catch (Exception ignored) {}
+                        }
+                        log.info("AI Review Agent: parsed {} VI suggestions and {} EN suggestions for review {}",
+                                viParts.size(), enParts.size(), review.getId());
                     } catch (Exception parseEx) {
-                        log.error("Failed to parse Gemini response via Jackson", parseEx);
+                        log.error("Failed to parse Gemini JSON response for review {}: {}", review.getId(), parseEx.getMessage());
                     }
                 }
             } catch (Exception e) {
