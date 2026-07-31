@@ -53,6 +53,7 @@ public class KdsController {
                 oMap.put("id", order.getId());
                 oMap.put("tableId", order.getSession() != null ? order.getSession().getTable().getId() : null);
                 oMap.put("tableName", order.getSession() != null ? order.getSession().getTable().getName() : "");
+                oMap.put("sessionOpenedAt", order.getSession() != null && order.getSession().getCheckInTime() != null ? order.getSession().getCheckInTime().toString() : null);
                 oMap.put("status", order.getStatus());
                 oMap.put("createdAt", order.getOrderDate() != null ? order.getOrderDate().toString() : "");
 

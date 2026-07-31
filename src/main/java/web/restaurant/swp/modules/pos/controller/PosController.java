@@ -40,6 +40,8 @@ import web.restaurant.swp.modules.floorplan.model.FloorPlan;
 import web.restaurant.swp.modules.floorplan.model.FloorPlanObject;
 import web.restaurant.swp.modules.floorplan.repository.FloorPlanRepository;
 import web.restaurant.swp.modules.floorplan.repository.FloorPlanObjectRepository;
+import web.restaurant.swp.modules.booking.model.Booking;
+import web.restaurant.swp.modules.booking.repository.BookingRepository;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -54,6 +56,7 @@ public class PosController {
 
     private final TableRepository tableRepository;
     private final TableSessionRepository tableSessionRepository;
+    private final BookingRepository bookingRepository;
     private final OrderRepository orderRepository;
     private final OrderDetailRepository orderDetailRepository;
     private final ProductRepository productRepository;
@@ -838,14 +841,23 @@ public class PosController {
         }
     }
 
-    private List<Map<String, Object>> enrichTables(List<TableEntity> list) {
+    private List<Map<String, Object>> enrichTables(List<TableEntity> list, String branchId) {
         List<Map<String, Object>> response = new ArrayList<>();
+
+        LocalDate today = LocalDate.now();
+        LocalDateTime startOfDay = today.atStartOfDay();
+        LocalDateTime endOfDay = today.atTime(23, 59, 59);
+        List<Booking> dateBookings = (branchId != null && !branchId.isBlank())
+                ? bookingRepository.findByBranchIdAndStatusNotAndBookingTimeBetween(branchId, "CANCELLED", startOfDay, endOfDay)
+                : Collections.emptyList();
+
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+
         for (TableEntity t : list) {
             Map<String, Object> map = new LinkedHashMap<>();
             map.put("id", t.getId());
             map.put("name", t.getName());
             map.put("capacity", t.getCapacity());
-            map.put("status", t.getStatus());
             map.put("guestCount", t.getGuestCount());
             map.put("tableStyle", t.getTableStyle());
             map.put("shape", t.getShape());
@@ -855,28 +867,80 @@ public class PosController {
                 map.put("room", null);
             }
 
+            Booking booking = dateBookings.stream()
+                    .filter(b -> (b.getTableId() != null && b.getTableId().equals(t.getId()))
+                              || (b.getTableLabel() != null && b.getTableLabel().equalsIgnoreCase(t.getName())))
+                    .findFirst()
+                    .orElse(null);
+
             Optional<TableSession> sessionOpt = findActiveSessionForTable(t.getId());
+            String status;
             if (sessionOpt.isPresent()) {
                 TableSession session = sessionOpt.get();
+                status = "OCCUPIED";
                 map.put("activeSessionId", session.getId());
                 map.put("sessionOpenedAt", session.getCheckInTime() != null ? session.getCheckInTime().toString() : null);
 
                 List<Order> orders = orderRepository.findBySessionId(session.getId());
                 double total = 0.0;
                 for (Order o : orders) {
-                    String status = o.getStatus();
-                    if ("PENDING".equalsIgnoreCase(status) || "SENT".equalsIgnoreCase(status)
-                            || "COOKING".equalsIgnoreCase(status) || "READY".equalsIgnoreCase(status)
-                            || "SERVED".equalsIgnoreCase(status)) {
+                    String st = o.getStatus();
+                    if ("PENDING".equalsIgnoreCase(st) || "SENT".equalsIgnoreCase(st)
+                            || "COOKING".equalsIgnoreCase(st) || "READY".equalsIgnoreCase(st)
+                            || "SERVED".equalsIgnoreCase(st)) {
                         total += o.getTotalAmount() != null ? o.getTotalAmount() : 0.0;
                     }
                 }
                 map.put("sessionTotalAmount", total);
             } else {
+                if (booking != null) {
+                    status = "RESERVED";
+                } else if ("OCCUPIED".equalsIgnoreCase(t.getStatus())) {
+                    status = "OCCUPIED";
+                } else {
+                    status = "EMPTY";
+                }
                 map.put("activeSessionId", null);
                 map.put("sessionOpenedAt", null);
                 map.put("sessionTotalAmount", 0.0);
             }
+
+            map.put("status", status);
+
+            if (booking != null) {
+                Map<String, Object> bMap = new LinkedHashMap<>();
+                bMap.put("id", booking.getId());
+                bMap.put("customerName", booking.getCustomerName());
+                bMap.put("customerPhone", booking.getCustomerPhone());
+                bMap.put("customerEmail", booking.getCustomerEmail());
+                bMap.put("bookingTime", booking.getBookingTime() != null ? booking.getBookingTime().toString() : null);
+                bMap.put("guests", booking.getGuests());
+                bMap.put("depositAmount", booking.getDepositAmount() != null ? booking.getDepositAmount() : 0.0);
+                bMap.put("depositPaid", booking.getDepositPaid() != null ? booking.getDepositPaid() : false);
+                bMap.put("paymentStatus", booking.getPaymentStatus());
+                bMap.put("notes", booking.getNotes());
+                bMap.put("source", booking.getSource());
+
+                List<Object> items = new ArrayList<>();
+                if (booking.getOrderedItemsJson() != null && !booking.getOrderedItemsJson().isBlank()) {
+                    try {
+                        String rawJson = booking.getOrderedItemsJson().trim();
+                        if (rawJson.startsWith("\"") && rawJson.endsWith("\"")) {
+                            try {
+                                rawJson = mapper.readValue(rawJson, String.class);
+                            } catch (Exception ignored) {}
+                        }
+                        items = mapper.readValue(rawJson, new com.fasterxml.jackson.core.type.TypeReference<List<Object>>() {});
+                    } catch (Exception ex) {
+                        log.warn("Failed to parse orderedItemsJson for booking id {}: {}", booking.getId(), ex.getMessage());
+                    }
+                }
+                bMap.put("orderedItems", items);
+                map.put("bookingDetails", bMap);
+            } else {
+                map.put("bookingDetails", null);
+            }
+
             response.add(map);
         }
         return response;
@@ -889,20 +953,109 @@ public class PosController {
             String branchId = branchAccessService.validateAndGetBranchId(null, error);
             if (error.hasError()) return error.toResponse();
 
+            List<TableEntity> tables;
             if (roomId != null) {
                 Room room = roomRepository.findById(roomId)
                         .orElseThrow(() -> new NoSuchElementException("Không tìm thấy dữ liệu"));
                 if (!room.getBranch().getBranchId().equals(branchId)) {
                     return message(403, "You do not have access to this branch");
                 }
-                return ResponseEntity.ok(enrichTables(tableRepository.findByRoomIdOrderByIdAsc(roomId)));
+                tables = tableRepository.findByRoomIdOrderByIdAsc(roomId);
+            } else {
+                tables = tableRepository.findByRoomBranchBranchIdOrderByRoomDisplayOrderAscIdAsc(branchId);
             }
 
-            return ResponseEntity.ok(enrichTables(tableRepository.findByRoomBranchBranchIdOrderByRoomDisplayOrderAscIdAsc(branchId)));
+            return ResponseEntity.ok(enrichTables(tables, branchId));
         } catch (NoSuchElementException e) {
             return message(404, "Không tìm thấy dữ liệu");
         } catch (Exception e) {
             return message(400, e.getMessage());
+        }
+    }
+
+    @GetMapping("/api/pos/bookings")
+    public ResponseEntity<?> getPosBookings(
+            @RequestParam(required = false) String date,
+            @RequestParam(required = false) String status) {
+        try {
+            BranchAccessService.ErrorHolder error = new BranchAccessService.ErrorHolder();
+            String branchId = branchAccessService.validateAndGetBranchId(null, error);
+            if (error.hasError()) return error.toResponse();
+
+            LocalDate targetDate;
+            try {
+                targetDate = (date != null && !date.isBlank()) ? LocalDate.parse(date) : LocalDate.now();
+            } catch (Exception e) {
+                targetDate = LocalDate.now();
+            }
+
+            LocalDateTime startOfDay = targetDate.atStartOfDay();
+            LocalDateTime endOfDay = targetDate.atTime(23, 59, 59);
+
+            List<Booking> bookings = bookingRepository.findByBranchIdAndBookingTimeBetween(branchId, startOfDay, endOfDay);
+            if (status != null && !status.isBlank()) {
+                bookings = bookings.stream()
+                        .filter(b -> status.equalsIgnoreCase(b.getStatus()))
+                        .collect(Collectors.toList());
+            } else {
+                bookings = bookings.stream()
+                        .filter(b -> !"CANCELLED".equalsIgnoreCase(b.getStatus()))
+                        .collect(Collectors.toList());
+            }
+
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            List<Map<String, Object>> response = new ArrayList<>();
+
+            for (Booking b : bookings) {
+                Map<String, Object> map = new LinkedHashMap<>();
+                map.put("id", b.getId());
+                map.put("customerName", b.getCustomerName());
+                map.put("customerPhone", b.getCustomerPhone());
+                map.put("customerEmail", b.getCustomerEmail());
+                map.put("bookingTime", b.getBookingTime() != null ? b.getBookingTime().toString() : null);
+                map.put("guests", b.getGuests());
+                map.put("status", b.getStatus());
+                map.put("tableId", b.getTableId());
+                map.put("tableLabel", b.getTableLabel());
+                map.put("notes", b.getNotes());
+                map.put("dietaryNotes", b.getDietaryNotes());
+                map.put("allergyPeanut", b.getAllergyPeanut());
+                map.put("allergyGluten", b.getAllergyGluten());
+                map.put("allergyOthers", b.getAllergyOthers());
+                map.put("depositAmount", b.getDepositAmount() != null ? b.getDepositAmount() : 0.0);
+                map.put("depositPaid", b.getDepositPaid() != null ? b.getDepositPaid() : false);
+                map.put("paymentStatus", b.getPaymentStatus());
+                map.put("source", b.getSource());
+
+                List<Object> items = new ArrayList<>();
+                if (b.getOrderedItemsJson() != null && !b.getOrderedItemsJson().isBlank()) {
+                    try {
+                        String rawJson = b.getOrderedItemsJson().trim();
+                        if (rawJson.startsWith("\"") && rawJson.endsWith("\"")) {
+                            try {
+                                rawJson = mapper.readValue(rawJson, String.class);
+                            } catch (Exception ignored) {}
+                        }
+                        items = mapper.readValue(rawJson, new com.fasterxml.jackson.core.type.TypeReference<List<Object>>() {});
+                    } catch (Exception ex) {
+                        log.warn("Failed to parse orderedItemsJson for booking id {}: {}", b.getId(), ex.getMessage());
+                    }
+                }
+                map.put("orderedItems", items);
+                response.add(map);
+            }
+
+            response.sort((m1, m2) -> {
+                String t1 = (String) m1.get("bookingTime");
+                String t2 = (String) m2.get("bookingTime");
+                if (t1 == null) return 1;
+                if (t2 == null) return -1;
+                return t1.compareTo(t2);
+            });
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
 

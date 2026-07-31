@@ -54,6 +54,10 @@ public class PromotionManagerController {
             if (p.getEndDate() != null && p.getEndDate().isBefore(today)) {
                 promotionRepository.delete(p);
             } else {
+                if ("PercentDiscount".equalsIgnoreCase(p.getType()) && p.getDiscountValue() > 100.0) {
+                    p.setDiscountValue(100.0);
+                    promotionRepository.save(p);
+                }
                 activePromotions.add(p);
             }
         }
@@ -95,8 +99,14 @@ public class PromotionManagerController {
             return ResponseEntity.badRequest().body(Map.of("message", "Loại giảm giá không hợp lệ (PercentDiscount hoặc FlatDiscount)."));
         }
 
-        if (discountValue <= 0) {
-            return ResponseEntity.badRequest().body(Map.of("message", "Giá trị giảm giá phải lớn hơn 0."));
+        if ("PercentDiscount".equalsIgnoreCase(type)) {
+            if (discountValue < 1.0 || discountValue > 100.0) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Số % giảm giá chỉ được phép từ 1% đến 100%."));
+            }
+        } else {
+            if (discountValue <= 0) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Giá trị giảm giá phải lớn hơn 0."));
+            }
         }
 
         String finalCode;
