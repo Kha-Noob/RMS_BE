@@ -33,6 +33,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.*;
 
+import web.restaurant.swp.modules.booking.model.Booking;
+import web.restaurant.swp.modules.booking.repository.BookingRepository;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -44,6 +47,7 @@ public class OrderService {
     private final ProductVariantRepository productVariantRepository;
     private final InventoryService inventoryService;
     private final LoyaltyService loyaltyService;
+    private final BookingRepository bookingRepository;
 
     // REQ-POS-01: List tables by branch
     public List<TableEntity> getTablesByBranch(String branchId) {
@@ -296,6 +300,28 @@ public class OrderService {
         table.setStatus("EMPTY");
         table.setGuestCount(0);
         tableRepository.save(table);
+
+        // Also update any active/confirmed Booking for this table to COMPLETED
+        if (table != null && table.getRoom() != null && table.getRoom().getBranch() != null) {
+            try {
+                java.time.LocalDate today = java.time.LocalDate.now();
+                LocalDateTime startOfDay = today.atStartOfDay();
+                LocalDateTime endOfDay = today.atTime(23, 59, 59);
+                String branchId = table.getRoom().getBranch().getBranchId();
+                List<Booking> bookings = bookingRepository.findByBranchIdAndBookingTimeBetween(branchId, startOfDay, endOfDay);
+                for (Booking b : bookings) {
+                    if ((b.getTableId() != null && b.getTableId().equals(table.getId()))
+                        || (b.getTableLabel() != null && b.getTableLabel().equalsIgnoreCase(table.getName()))) {
+                        if (!"CANCELLED".equalsIgnoreCase(b.getStatus()) && !"COMPLETED".equalsIgnoreCase(b.getStatus())) {
+                            b.setStatus("COMPLETED");
+                            bookingRepository.save(b);
+                        }
+                    }
+                }
+            } catch (Exception ex) {
+                log.warn("Could not update booking status during checkout: {}", ex.getMessage());
+            }
+        }
 
         // Mark orders and details as served/completed
         List<Order> orders = orderRepository.findBySessionId(sessionId);

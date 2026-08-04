@@ -486,8 +486,9 @@ public class PosController {
             User user = getLoggedInUser();
             String branchId = (session != null) ? session.getTable().getRoom().getBranch().getBranchId() : getActiveBranchId();
             authService.logAudit(user, "BILL_PAYMENT", "Order", sessionId.toString(),
-                "Thanh to?n th?nh c?ng h?a ??n b?n " + (session != null ? session.getTable().getName() : sessionId) + ", s? ti?n: ?" + String.format("%,.0f", amount) + " (" + paymentMethod + ")",
+                "Thanh toán thành công hóa đơn bàn " + (session != null ? session.getTable().getName() : sessionId) + ", số tiền: " + String.format("%,.0f", amount) + " (" + paymentMethod + ")",
                 "127.0.0.1", branchId);
+            KdsWebSocketHandler.broadcast("TABLE_STATUS_CHANGED");
             KdsWebSocketHandler.broadcast("ORDER_STATE_CHANGED");
             return ResponseEntity.ok().build();
         } catch (Exception e) {
@@ -870,6 +871,10 @@ public class PosController {
             Booking booking = dateBookings.stream()
                     .filter(b -> (b.getTableId() != null && b.getTableId().equals(t.getId()))
                               || (b.getTableLabel() != null && b.getTableLabel().equalsIgnoreCase(t.getName())))
+                    .filter(b -> !"COMPLETED".equalsIgnoreCase(b.getStatus())
+                              && !"CANCELLED".equalsIgnoreCase(b.getStatus())
+                              && !"SERVED".equalsIgnoreCase(b.getStatus())
+                              && !"PAID".equalsIgnoreCase(b.getStatus()))
                     .findFirst()
                     .orElse(null);
 
@@ -895,10 +900,13 @@ public class PosController {
             } else {
                 if (booking != null) {
                     status = "RESERVED";
-                } else if ("OCCUPIED".equalsIgnoreCase(t.getStatus())) {
-                    status = "OCCUPIED";
                 } else {
                     status = "EMPTY";
+                    if (!"EMPTY".equalsIgnoreCase(t.getStatus())) {
+                        t.setStatus("EMPTY");
+                        t.setGuestCount(0);
+                        tableRepository.save(t);
+                    }
                 }
                 map.put("activeSessionId", null);
                 map.put("sessionOpenedAt", null);
