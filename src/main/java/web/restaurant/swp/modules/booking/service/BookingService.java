@@ -67,6 +67,29 @@ public class BookingService {
                 .filter(Objects::nonNull)
                 .toList());
 
+        // Include all tables mentioned in multi-table bookings (tableLabel with comma)
+        List<TableEntity> branchTablesForIds = null;
+        for (Booking b : activeBookings) {
+            if (b.getTableLabel() != null && b.getTableLabel().contains(",")) {
+                if (isOverlapping(b.getBookingTime(), b.getDurationMinutes() != null ? b.getDurationMinutes() : 120, bookingTime, newDurationMinutes)) {
+                    if (branchTablesForIds == null) {
+                        branchTablesForIds = tableRepository.findByRoomBranchBranchId(branchId);
+                    }
+                    String[] labels = b.getTableLabel().split(",");
+                    for (String lbl : labels) {
+                        String cleanLbl = lbl.trim();
+                        branchTablesForIds.stream()
+                                .filter(t -> t.getName().equalsIgnoreCase(cleanLbl))
+                                .forEach(t -> {
+                                    if (!bookedTableIds.contains(t.getId())) {
+                                        bookedTableIds.add(t.getId());
+                                    }
+                                });
+                    }
+                }
+            }
+        }
+
         // Real-time walk-in guest check: if the selected booking slot overlaps with any active walk-in sessions (120 mins duration)
         List<TableSession> activeSessions = tableSessionRepository.findByTableRoomBranchBranchIdAndStatus(branchId, "ACTIVE");
         for (TableSession session : activeSessions) {
@@ -96,11 +119,29 @@ public class BookingService {
                 
         Map<Long, String> bookedTimes = new java.util.HashMap<>();
 
+        List<TableEntity> branchTablesForTimes = null;
         for (Booking b : activeBookings) {
-            if (b.getTableId() == null) continue;
             int dur = b.getDurationMinutes() != null ? b.getDurationMinutes() : 120;
             if (isOverlapping(b.getBookingTime(), dur, bookingTime, newDurationMinutes)) {
-                bookedTimes.put(b.getTableId(), b.getBookingTime().toString());
+                if (b.getTableId() != null) {
+                    bookedTimes.put(b.getTableId(), b.getBookingTime().toString());
+                }
+                if (b.getTableLabel() != null && b.getTableLabel().contains(",")) {
+                    if (branchTablesForTimes == null) {
+                        branchTablesForTimes = tableRepository.findByRoomBranchBranchId(branchId);
+                    }
+                    String[] labels = b.getTableLabel().split(",");
+                    for (String lbl : labels) {
+                        String cleanLbl = lbl.trim();
+                        branchTablesForTimes.stream()
+                                .filter(t -> t.getName().equalsIgnoreCase(cleanLbl))
+                                .forEach(t -> {
+                                    if (!bookedTimes.containsKey(t.getId())) {
+                                        bookedTimes.put(t.getId(), b.getBookingTime().toString());
+                                    }
+                                });
+                    }
+                }
             }
         }
 
@@ -201,14 +242,47 @@ public class BookingService {
                 throw new RuntimeException("Bàn được chọn không thuộc chi nhánh này!");
             }
 
-            // Validate capacity
-            if (table.getCapacity() < booking.getGuests()) {
+            // Validate capacity across single or multiple tables
+            int totalCapacity = table.getCapacity();
+            if (booking.getTableLabel() != null && booking.getTableLabel().contains(",")) {
+                String[] labels = booking.getTableLabel().split(",");
+                List<TableEntity> branchTables = tableRepository.findByRoomBranchBranchId(booking.getBranchId());
+                int sumCap = 0;
+                for (String lbl : labels) {
+                    String cleanLbl = lbl.trim();
+                    Optional<TableEntity> match = branchTables.stream()
+                            .filter(t -> t.getName().equalsIgnoreCase(cleanLbl))
+                            .findFirst();
+                    if (match.isPresent()) {
+                        sumCap += match.get().getCapacity();
+                    } else {
+                        sumCap += 4;
+                    }
+                }
+                if (sumCap > 0) {
+                    totalCapacity = sumCap;
+                }
+            }
+
+            if (totalCapacity < booking.getGuests()) {
                 throw new RuntimeException("Sức chứa của bàn không đủ cho số lượng khách!");
             }
 
             // Validate duplicate table booking
             List<Long> bookedIds = getBookedTableIds(booking.getBranchId(), booking.getBookingTime(), newDuration);
-            if (bookedIds.contains(booking.getTableId())) {
+            if (booking.getTableLabel() != null && booking.getTableLabel().contains(",")) {
+                String[] labels = booking.getTableLabel().split(",");
+                List<TableEntity> branchTables = tableRepository.findByRoomBranchBranchId(booking.getBranchId());
+                for (String lbl : labels) {
+                    String cleanLbl = lbl.trim();
+                    Optional<TableEntity> match = branchTables.stream()
+                            .filter(t -> t.getName().equalsIgnoreCase(cleanLbl))
+                            .findFirst();
+                    if (match.isPresent() && bookedIds.contains(match.get().getId())) {
+                        throw new RuntimeException("Bàn (" + cleanLbl + ") đã được đặt trước hoặc đang được sử dụng trong khoảng thời gian này!");
+                    }
+                }
+            } else if (bookedIds.contains(booking.getTableId())) {
                 throw new RuntimeException("Bàn này đã được đặt trước hoặc đang được sử dụng trong khoảng thời gian này!");
             }
             
@@ -321,7 +395,29 @@ public class BookingService {
                 throw new RuntimeException("Bàn được chọn không thuộc chi nhánh này!");
             }
 
-            if (table.getCapacity() < guests) {
+            int totalCapacity = table.getCapacity();
+            String labelToCheck = updated.getTableLabel() != null ? updated.getTableLabel() : existing.getTableLabel();
+            if (labelToCheck != null && labelToCheck.contains(",")) {
+                String[] labels = labelToCheck.split(",");
+                List<TableEntity> branchTables = tableRepository.findByRoomBranchBranchId(branchId);
+                int sumCap = 0;
+                for (String lbl : labels) {
+                    String cleanLbl = lbl.trim();
+                    Optional<TableEntity> match = branchTables.stream()
+                            .filter(t -> t.getName().equalsIgnoreCase(cleanLbl))
+                            .findFirst();
+                    if (match.isPresent()) {
+                        sumCap += match.get().getCapacity();
+                    } else {
+                        sumCap += 4;
+                    }
+                }
+                if (sumCap > 0) {
+                    totalCapacity = sumCap;
+                }
+            }
+
+            if (totalCapacity < guests) {
                 throw new RuntimeException("Sức chứa của bàn không đủ cho số lượng khách!");
             }
         }
