@@ -159,9 +159,11 @@ public class SecurityConfig {
                          if (isCustomer) {
                              String passcode = java.util.UUID.randomUUID().toString().replace("-", "");
                              web.restaurant.swp.modules.auth.service.AuthService.googleTempPasscodes.put(email, passwordEncoder().encode(passcode));
+                             Boolean isNew = web.restaurant.swp.modules.auth.service.AuthService.googleNewUsers.remove(email);
+                             boolean isNewUser = Boolean.TRUE.equals(isNew);
                              response.sendRedirect(
                                      (System.getenv("FRONTEND_URL") != null ? System.getenv("FRONTEND_URL") : "http://localhost:3000")
-                                             + "/oauth2/callback?email=" + email + "&credentials=" + passcode);
+                                             + "/oauth2/callback?email=" + email + "&credentials=" + passcode + "&isNew=" + isNewUser);
                          } else {
                              // Non-customer users: redirect to login with error
                              response.sendRedirect(
@@ -205,6 +207,7 @@ public class SecurityConfig {
             Optional<User> userOpt = userRepository.findByEmail(email);
             User user;
             if (userOpt.isEmpty()) {
+                web.restaurant.swp.modules.auth.service.AuthService.googleNewUsers.put(email, true);
                 String name = oAuth2User.getAttribute("name");
                 if (name == null || name.trim().isEmpty()) {
                     name = email.split("@")[0];

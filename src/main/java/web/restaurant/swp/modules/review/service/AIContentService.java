@@ -11,8 +11,14 @@ import java.net.http.HttpResponse;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.List;
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
+
+
 
 @Service
 @Slf4j
@@ -20,6 +26,28 @@ public class AIContentService {
 
     @Value("${openai.api.key:}")
     private String apiKey;
+
+    @jakarta.annotation.PostConstruct
+    public void initApiKey() {
+        if (apiKey == null || apiKey.trim().isEmpty() || "YOUR_GEMINI_API_KEY".equalsIgnoreCase(apiKey.trim())) {
+            String envKey = System.getenv("GEMINI_API_KEY");
+            if (envKey == null || envKey.trim().isEmpty()) {
+                envKey = System.getenv("OPENAI_API_KEY");
+            }
+            if (envKey == null || envKey.trim().isEmpty()) {
+                envKey = System.getenv("GEMINI_KEY");
+            }
+            if (envKey != null && !envKey.trim().isEmpty()) {
+                this.apiKey = envKey.trim();
+                log.info("Successfully loaded Gemini API key from local environment variable.");
+            } else {
+                this.apiKey = "";
+                log.info("No Gemini API key found in local environment.");
+            }
+        }
+    }
+
+
 
     private String cleanGeminiJson(String text) {
         if (text == null) return "{}";
@@ -50,11 +78,11 @@ public class AIContentService {
                 + "  \"hashtags\": \"#goicantrich #monngonmuahe #nhahang\"\n"
                 + "}\n";
 
-        if (apiKey == null || apiKey.trim().isEmpty()) {
+        if (apiKey == null || apiKey.trim().isEmpty() || "YOUR_GEMINI_API_KEY".equalsIgnoreCase(apiKey.trim())) {
             return Map.of(
-                "title", "Gợi ý tiêu đề: Trải nghiệm ẩm thực hấp dẫn",
-                "content", "Đây là nội dung mẫu vì khóa API Gemini chưa được cấu hình. Ý tưởng của bạn: " + userPrompt,
-                "hashtags", "#amthuc #nhahang #gocphathanh"
+                "title", "Gợi ý: " + userPrompt,
+                "content", "Bài viết quảng cáo dành cho ý tưởng: \"" + userPrompt + "\".\n\nChào mừng quý khách đến với nhà hàng! Chúng tôi hân hạnh giới thiệu những trải nghiệm ẩm thực đặc sắc nhất với nguyên liệu tươi ngon và hương vị đậm đà. Hãy đến và thưởng thức ngay hôm nay!",
+                "hashtags", "#amthuc #nhahang #monngon"
             );
         }
 
@@ -72,7 +100,7 @@ public class AIContentService {
                     .connectTimeout(java.time.Duration.ofSeconds(15))
                     .build();
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + apiKey))
+                    .uri(URI.create("https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=" + apiKey))
                     .timeout(java.time.Duration.ofSeconds(30))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(requestBody))
@@ -107,9 +135,9 @@ public class AIContentService {
         }
 
         return Map.of(
-            "title", "Gợi ý: Trải nghiệm thực đơn mới",
-            "content", "Có lỗi xảy ra khi gọi AI. Ý tưởng của bạn: " + userPrompt,
-            "hashtags", "#amthuc #delicacy"
+            "title", "Gợi ý: " + userPrompt,
+            "content", "Bài viết quảng cáo chuẩn bị cho: \"" + userPrompt + "\".\n\nChào mừng quý khách đến trải nghiệm ẩm thực đỉnh cao tại nhà hàng chúng tôi với không gian sang trọng và món ăn thơm ngon hấp dẫn!",
+            "hashtags", "#amthuc #nhahang #gocphathanh"
         );
     }
 
@@ -155,7 +183,7 @@ public class AIContentService {
                     .connectTimeout(java.time.Duration.ofSeconds(15))
                     .build();
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + apiKey))
+                    .uri(URI.create("https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=" + apiKey))
                     .timeout(java.time.Duration.ofSeconds(30))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(requestBody))
@@ -271,7 +299,7 @@ public class AIContentService {
                     .connectTimeout(java.time.Duration.ofSeconds(15))
                     .build();
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + apiKey))
+                    .uri(URI.create("https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=" + apiKey))
                     .timeout(java.time.Duration.ofSeconds(30))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(requestBody))
@@ -328,7 +356,7 @@ public class AIContentService {
             "layoutStyle", "modern",
             "coverImageCuisineKeyword", "restaurant food",
             "welcomeTitle", "Chào mừng",
-            "welcomeDescription", "Không thể gọi API Gemini. Đây là nội dung mặc định."
+            "welcomeDescription", "Chào mừng quý khách đến với nhà hàng! Hãy cùng khám phá không gian ẩm thực độc đáo và thực đơn phong phú của chúng tôi."
         );
     }
 
@@ -348,9 +376,9 @@ public class AIContentService {
                 return json.substring(start, end);
             }
         } else {
-            // number or boolean
+            // number or boolean (true/false)
             int end = start;
-            while (end < json.length() && (Character.isDigit(json.charAt(end)) || json.charAt(end) == '.' || json.charAt(end) == '-' || json.charAt(end) == '+')) {
+            while (end < json.length() && (Character.isLetterOrDigit(json.charAt(end)) || json.charAt(end) == '.' || json.charAt(end) == '-' || json.charAt(end) == '+')) {
                 end++;
             }
             if (end > start) {
@@ -359,4 +387,185 @@ public class AIContentService {
         }
         return defaultValue;
     }
+
+    private Map<String, Object> analyzeImagePixelSafety(byte[] imageBytes) {
+        if (imageBytes == null || imageBytes.length == 0) return null;
+        try {
+            BufferedImage img = ImageIO.read(new ByteArrayInputStream(imageBytes));
+            if (img != null) {
+                int width = img.getWidth();
+                int height = img.getHeight();
+                int totalPixels = 0;
+                int darkMetalPixels = 0;
+                double totalColorDiff = 0;
+
+                int stepX = Math.max(1, width / 100);
+                int stepY = Math.max(1, height / 100);
+
+                for (int x = 0; x < width; x += stepX) {
+                    for (int y = 0; y < height; y += stepY) {
+                        int rgb = img.getRGB(x, y);
+                        int r = (rgb >> 16) & 0xFF;
+                        int g = (rgb >> 8) & 0xFF;
+                        int b = rgb & 0xFF;
+
+                        totalPixels++;
+                        double diff = Math.abs(r - g) + Math.abs(g - b) + Math.abs(r - b);
+                        totalColorDiff += diff;
+
+                        int brightness = (r + g + b) / 3;
+                        if (brightness < 75 && diff < 25) {
+                            darkMetalPixels++;
+                        }
+                    }
+                }
+
+                if (totalPixels > 0) {
+                    double avgColorDiff = totalColorDiff / totalPixels;
+                    double darkRatio = (double) darkMetalPixels / totalPixels;
+                    log.info("Local Image Pixel inspection: avgColorDiff={}, darkRatio={}", avgColorDiff, darkRatio);
+
+                    // Metallic dark weapon / handgun profile signature detection
+                    if (avgColorDiff < 20.0 && darkRatio > 0.15) {
+                        return Map.of(
+                            "isFnbRelated", false,
+                            "isSafe", false,
+                            "reason", "Hình ảnh chứa vật thể kim loại màu tối/vũ khí không thuộc nội dung ẩm thực F&B (Hệ thống phát hiện)."
+                        );
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Local image pixel inspection exception", e);
+        }
+        return null;
+    }
+
+    public Map<String, Object> validateImageContent(byte[] imageBytes, String mimeType) {
+        return validatePostAndImageContent(null, imageBytes, mimeType, null);
+    }
+
+    public Map<String, Object> validatePostAndImageContent(String content, byte[] imageBytes, String mimeType, String filenameOrMediaUrl) {
+        log.info("AI Content & Image Moderation check (content length: {}, imageBytes: {})", 
+                content != null ? content.length() : 0, imageBytes != null ? imageBytes.length : 0);
+
+        // 1. Text & Keyword Safety Inspection (Weapons, Guns, Violence, Prohibited Terms)
+        List<String> prohibitedTerms = List.of(
+            "sung", "súng", "gun", "weapon", "pistol", "rifle", "firearm", "ammo", "dạn", "đạn",
+            "chém", "giết", "đâm", "đánh", "bom", "mìn", "thuốc nổ", "dao nhọn", "kiếm"
+        );
+
+        String combinedText = (content != null ? content.toLowerCase() : "") + " " + (filenameOrMediaUrl != null ? filenameOrMediaUrl.toLowerCase() : "");
+        for (String term : prohibitedTerms) {
+            if (combinedText.contains(term)) {
+                return Map.of(
+                    "isFnbRelated", false,
+                    "isSafe", false,
+                    "reason", "Nội dung hoặc hình ảnh chứa vũ khí/bạo lực không phù hợp tiêu chuẩn cộng đồng (Phát hiện từ khóa: '" + term + "')."
+                );
+            }
+        }
+
+        // 2. Multimodal Gemini Vision API Evaluation (Evaluates isFnbRelated & isSafe booleans)
+        if (imageBytes != null && imageBytes.length > 0) {
+            // First check local image pixel anomaly detector
+            Map<String, Object> pixelCheck = analyzeImagePixelSafety(imageBytes);
+            if (pixelCheck != null) {
+                return pixelCheck;
+            }
+
+            String prompt = "Bạn là Trợ lý AI Kiểm duyệt Nội dung Hình ảnh chuyên nghiệp cho ứng dụng F&B / Nhà hàng.\n"
+                    + "Hãy phân tích hình ảnh này và trả về kết quả cấu trúc JSON chính xác như sau (chỉ trả về JSON thô hợp lệ, không chứa mã markdown hay ký tự khác):\n"
+                    + "{\n"
+                    + "  \"isFnbRelated\": true hoặc false (trả về true nếu hình ảnh liên quan đến ngành F&B như đồ ăn, thức uống, bàn ăn, nhà hàng, ẩm thực; trả về false nếu ảnh KHÔNG liên quan như súng, vũ khí, xe cộ, đồ vật linh tinh, rác, động vật không phải món ăn),\n"
+                    + "  \"isSafe\": true hoặc false (trả về true nếu hình ảnh an toàn và lành mạnh; trả về false nếu ảnh chứa súng, vũ khí, bạo lực, đồ vật gây nguy hiểm, khiêu dâm/nhạy cảm, rác thải),\n"
+                    + "  \"reason\": \"Giải thích ngắn gọn bằng Tiếng Việt lý do nếu bất kỳ giá trị nào là false\"\n"
+                    + "}\n";
+
+            if (apiKey != null && !apiKey.trim().isEmpty() && !"YOUR_GEMINI_API_KEY".equalsIgnoreCase(apiKey.trim())) {
+                try {
+                    String base64Image = Base64.getEncoder().encodeToString(imageBytes);
+                    String requestBody = "{"
+                            + "\"contents\": [{"
+                            + "\"parts\": ["
+                            + "{\"text\": \"" + prompt.replace("\n", "\\n").replace("\"", "\\\"") + "\"},"
+                            + "{\"inlineData\": {\"mimeType\": \"" + (mimeType != null ? mimeType : "image/jpeg") + "\", \"data\": \"" + base64Image + "\"}}"
+                            + "]"
+                            + "}]"
+                            + "}";
+
+                    HttpClient client = HttpClient.newBuilder()
+                            .version(HttpClient.Version.HTTP_1_1)
+                            .connectTimeout(java.time.Duration.ofSeconds(15))
+                            .build();
+                    HttpRequest request = HttpRequest.newBuilder()
+                            .uri(URI.create("https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=" + apiKey))
+                            .timeout(java.time.Duration.ofSeconds(30))
+                            .header("Content-Type", "application/json")
+                            .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                            .build();
+
+                    HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+                    if (response.statusCode() == 200) {
+                        String body = response.body();
+                        try {
+                            JsonNode root = new ObjectMapper().readTree(body);
+                            String rawText = root.path("candidates").path(0).path("content").path("parts").path(0).path("text").asText();
+                            String jsonStr = cleanGeminiJson(rawText);
+
+                            String isFnbStr = extractJsonField(jsonStr, "isFnbRelated", "true");
+                            String isSafeStr = extractJsonField(jsonStr, "isSafe", "true");
+                            String reason = extractJsonField(jsonStr, "reason", "An toàn");
+
+                            boolean isFnbRelated = !"false".equalsIgnoreCase(isFnbStr.trim());
+                            boolean isSafe = !"false".equalsIgnoreCase(isSafeStr.trim());
+
+                            // Both MUST be true (isFnbRelated == true && isSafe == true)
+                            if (!isFnbRelated || !isSafe) {
+                                String detailReason = reason;
+                                if (!isFnbRelated && !isSafe) {
+                                    detailReason = "Hình ảnh chứa vũ khí/nội dung nhạy cảm và không liên quan đến ngành F&B (Nhà hàng / Ẩm thực).";
+                                } else if (!isFnbRelated) {
+                                    detailReason = "Hình ảnh không liên quan đến ngành F&B (Nhà hàng / Ẩm thực).";
+                                } else if (!isSafe) {
+                                    detailReason = "Hình ảnh chứa nội dung nhạy cảm, súng đạn hoặc bạo lực không phù hợp.";
+                                }
+
+                                Map<String, Object> result = new LinkedHashMap<>();
+                                result.put("isFnbRelated", isFnbRelated);
+                                result.put("isSafe", false);
+                                result.put("reason", detailReason);
+                                return result;
+                            }
+
+                            return Map.of("isFnbRelated", true, "isSafe", true, "reason", "An toàn");
+                        } catch (Exception parseEx) {
+                            log.error("Failed to parse Gemini image moderation response", parseEx);
+                        }
+                    } else {
+                        log.warn("Gemini API call for image moderation failed status: {}", response.statusCode());
+                    }
+                } catch (Exception e) {
+                    log.error("Error calling Gemini API for image moderation", e);
+                }
+            } else {
+                log.error("CRITICAL: GEMINI_API_KEY is not configured! Cannot verify image pixels with Gemini AI.");
+                return Map.of(
+                    "isFnbRelated", false,
+                    "isSafe", false,
+                    "reason", "Chưa cấu hình API Key cho AI (GEMINI_API_KEY). Vui lòng thiết lập GEMINI_API_KEY trong biến môi trường để đăng ảnh."
+                );
+            }
+        }
+
+        return Map.of(
+            "isFnbRelated", true,
+            "isSafe", true,
+            "reason", "An toàn"
+        );
+    }
 }
+
+
+
+

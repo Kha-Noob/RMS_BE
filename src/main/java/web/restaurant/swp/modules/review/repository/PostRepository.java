@@ -14,4 +14,9 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     List<Post> findByStatusOrderByCreatedAtDesc(String status);
     Page<Post> findByBranchIdInAndStatusOrderByCreatedAtDesc(List<String> branchIds, String status, Pageable pageable);
     List<Post> findByBranchIdInAndStatusOrderByCreatedAtDesc(List<String> branchIds, String status);
+    boolean existsByAuthorPhoneAndTableSessionId(String authorPhone, Long tableSessionId);
+    boolean existsByTableSessionId(Long tableSessionId);
+    long countByAuthorPhoneAndStatusNot(String authorPhone, String status);
 }
+
+

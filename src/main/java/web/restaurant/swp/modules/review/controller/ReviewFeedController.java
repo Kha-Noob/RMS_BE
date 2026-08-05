@@ -26,6 +26,7 @@ public class ReviewFeedController {
     private final UserRepository userRepository;
     private final S3Service s3Service;
     private final web.restaurant.swp.modules.review.service.ProfanityFilterService profanityFilterService;
+    private final web.restaurant.swp.modules.review.service.AIContentService aiContentService;
 
     @PostMapping("/public/feed/upload")
     public ResponseEntity<?> uploadFile(@RequestParam("file") MultipartFile file) {
@@ -33,6 +34,19 @@ public class ReviewFeedController {
             return ResponseEntity.badRequest().body("File is empty");
         }
         try {
+            String contentType = file.getContentType();
+            String originalFilename = file.getOriginalFilename();
+            if (contentType != null && contentType.startsWith("image/")) {
+                java.util.Map<String, Object> moderationResult = aiContentService.validatePostAndImageContent(
+                    originalFilename, file.getBytes(), contentType, originalFilename
+                );
+                Boolean isSafe = (Boolean) moderationResult.get("isSafe");
+                if (Boolean.FALSE.equals(isSafe)) {
+                    String reason = (String) moderationResult.getOrDefault("reason", "Hình ảnh không phù hợp tiêu chuẩn cộng đồng.");
+                    return ResponseEntity.badRequest().body("Ảnh bị từ chối do chứa nội dung không phù hợp: " + reason);
+                }
+            }
+
             String fileUrl = s3Service.uploadFile(file, "feed");
             return ResponseEntity.ok(java.util.Map.of("url", fileUrl));
         } catch (Exception e) {
@@ -40,7 +54,29 @@ public class ReviewFeedController {
         }
     }
 
+
+
+    @GetMapping("/public/feed/user-paid-history")
+    public ResponseEntity<?> getUserPaidHistory(@RequestParam(required = false) String phone) {
+        User user = getCurrentUser();
+        String targetPhone = (user != null && user.getPhone() != null && !user.getPhone().isEmpty())
+                ? user.getPhone() : phone;
+        ReviewFeedService.UserPaidHistoryDto history = reviewFeedService.getUserPaidHistory(targetPhone);
+        return ResponseEntity.ok(history);
+    }
+
+    @GetMapping("/public/feed/user-paid-dishes")
+    public ResponseEntity<?> getUserPaidDishes(@RequestParam(required = false) String phone) {
+        User user = getCurrentUser();
+        String targetPhone = (user != null && user.getPhone() != null && !user.getPhone().isEmpty())
+                ? user.getPhone() : phone;
+        List<web.restaurant.swp.modules.inventory.model.Product> dishes = reviewFeedService.getUserPaidDishes(targetPhone);
+        return ResponseEntity.ok(dishes);
+    }
+
+
     private User getCurrentUser() {
+
         try {
             org.springframework.security.core.Authentication auth = SecurityContextHolder.getContext().getAuthentication();
             if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getName())) {
@@ -61,14 +97,38 @@ public class ReviewFeedController {
         public Integer rating;
         public String tableCheckIn;
         public String branchId;
+        public Long tableSessionId;
         public List<Long> taggedProductIds;
     }
+
 
     // DTO for comment request
     public static class CommentRequest {
         public String authorName;
         public String authorPhone;
         public String content;
+    }
+
+    private byte[] getImageBytesFromUrl(String mediaUrls) {
+        if (mediaUrls == null || mediaUrls.trim().isEmpty()) return null;
+        String[] urls = mediaUrls.split(";");
+        for (String url : urls) {
+            try {
+                if (url.contains("/api/floor-plans/files/")) {
+                    String sub = url.substring(url.indexOf("/api/floor-plans/files/") + "/api/floor-plans/files/".length());
+                    String[] parts = sub.split("/");
+                    if (parts.length == 2) {
+                        java.nio.file.Path p = java.nio.file.Paths.get("./uploads", parts[0], parts[1]).toAbsolutePath();
+                        if (java.nio.file.Files.exists(p)) {
+                            return java.nio.file.Files.readAllBytes(p);
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                // Ignore read errors
+            }
+        }
+        return null;
     }
 
     // 1. Create post
@@ -78,7 +138,19 @@ public class ReviewFeedController {
             return ResponseEntity.badRequest().body("Nội dung bài viết chứa từ ngữ không phù hợp.");
         }
 
+        byte[] imageBytes = getImageBytesFromUrl(req.mediaUrls);
+        java.util.Map<String, Object> moderationResult = aiContentService.validatePostAndImageContent(
+            req.content, imageBytes, "image/jpeg", req.mediaUrls
+        );
+        Boolean isSafe = (Boolean) moderationResult.get("isSafe");
+        if (Boolean.FALSE.equals(isSafe)) {
+            String reason = (String) moderationResult.getOrDefault("reason", "Bài viết hoặc hình ảnh chứa nội dung không phù hợp.");
+            return ResponseEntity.badRequest().body("Bài viết bị từ chối do chứa nội dung không phù hợp: " + reason);
+        }
+
         User user = getCurrentUser();
+
+
         
         Post post = Post.builder()
                 .authorName((user != null) ? user.getName() : req.authorName)
@@ -89,7 +161,9 @@ public class ReviewFeedController {
                 .rating(req.rating != null ? req.rating : 5)
                 .tableCheckIn(req.tableCheckIn)
                 .branchId(req.branchId)
+                .tableSessionId(req.tableSessionId)
                 .build();
+
 
         if (post.getAuthorName() == null || post.getAuthorName().trim().isEmpty()) {
             post.setAuthorName("Ẩn danh");
@@ -184,23 +258,36 @@ public class ReviewFeedController {
         }
     }
 
-    // 7. Soft delete post (by author)
+    // 7. Soft delete post (by author or Admin/Manager)
     @DeleteMapping("/public/feed/posts/{id}")
     public ResponseEntity<?> softDeletePost(
             @PathVariable Long id,
             @RequestParam(required = false) String phone) {
         User user = getCurrentUser();
+        boolean isAdmin = false;
+        if (user != null && user.getRoles() != null) {
+            isAdmin = user.getRoles().stream().anyMatch(r -> 
+                r != null && r.getName() != null && (
+                    "ADMIN".equalsIgnoreCase(r.getName()) || 
+                    "ROLE_ADMIN".equalsIgnoreCase(r.getName()) ||
+                    "COOPERATOR".equalsIgnoreCase(r.getName()) ||
+                    "MANAGER".equalsIgnoreCase(r.getName())
+                )
+            );
+        }
+
         String callerPhone = (user != null) ? user.getPhone() : phone;
-        if (callerPhone == null || callerPhone.trim().isEmpty()) {
+        if (!isAdmin && (callerPhone == null || callerPhone.trim().isEmpty())) {
             return ResponseEntity.badRequest().body("Yêu cầu số điện thoại để thực hiện xóa bài viết.");
         }
         try {
-            reviewFeedService.softDeletePost(id, callerPhone);
+            reviewFeedService.softDeletePost(id, callerPhone, isAdmin);
             return ResponseEntity.ok(java.util.Map.of("message", "Đã xóa bài viết thành công."));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
+
 
     // 8. Admin Dashboard Posts List
     @GetMapping("/admin/feed/posts")
@@ -264,6 +351,20 @@ public class ReviewFeedController {
             @PathVariable Long id,
             @RequestBody CreatePostRequest req,
             @RequestParam(required = false) String phone) {
+        if (profanityFilterService.hasProfanity(req.content)) {
+            return ResponseEntity.badRequest().body("Nội dung bài viết chứa từ ngữ không phù hợp.");
+        }
+
+        byte[] imageBytes = getImageBytesFromUrl(req.mediaUrls);
+        java.util.Map<String, Object> moderationResult = aiContentService.validatePostAndImageContent(
+            req.content, imageBytes, "image/jpeg", req.mediaUrls
+        );
+        Boolean isSafe = (Boolean) moderationResult.get("isSafe");
+        if (Boolean.FALSE.equals(isSafe)) {
+            String reason = (String) moderationResult.getOrDefault("reason", "Bài viết hoặc hình ảnh chứa nội dung không phù hợp.");
+            return ResponseEntity.badRequest().body("Bài viết bị từ chối do chứa nội dung không phù hợp: " + reason);
+        }
+
         User user = getCurrentUser();
         String callerPhone = (user != null) ? user.getPhone() : phone;
         if (callerPhone == null || callerPhone.trim().isEmpty()) {
@@ -276,6 +377,7 @@ public class ReviewFeedController {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
+
 
     // 14. Public Delete Comment
     @DeleteMapping("/public/feed/posts/{id}/comment/{commentId}")

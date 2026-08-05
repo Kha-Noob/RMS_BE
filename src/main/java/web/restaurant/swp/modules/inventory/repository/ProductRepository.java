@@ -41,4 +41,8 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     List<Product> findByTenantTenantId(String tenantId);
     List<Product> findByTenantTenantIdAndIsActiveTrue(String tenantId);
     List<Product> findByCategoryIdAndTenantTenantIdAndIsActiveTrue(Long categoryId, String tenantId);
+
+    @Query("SELECT DISTINCT p FROM OrderDetail od JOIN od.variant v JOIN v.product p JOIN od.order o JOIN o.session ts LEFT JOIN ts.customer c WHERE ts.paymentStatus = 'PAID' AND ((c IS NOT NULL AND c.phone = :phone) OR (c IS NOT NULL AND :customerId IS NOT NULL AND c.id = :customerId))")
+    List<Product> findPaidProductsByPhoneOrCustomerId(@org.springframework.data.repository.query.Param("phone") String phone, @org.springframework.data.repository.query.Param("customerId") Long customerId);
 }
+

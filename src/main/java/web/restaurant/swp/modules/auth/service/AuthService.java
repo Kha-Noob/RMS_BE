@@ -42,6 +42,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @Slf4j
 public class AuthService {
     public static final Map<String, String> googleTempPasscodes = new ConcurrentHashMap<>();
+    public static final Map<String, Boolean> googleNewUsers = new ConcurrentHashMap<>();
 
     private final UserRepository userRepository;
     private final UserSessionRepository userSessionRepository;

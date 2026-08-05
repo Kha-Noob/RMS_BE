@@ -48,6 +48,10 @@ public class Post {
     @Column(name = "branch_id", length = 36)
     private String branchId;
 
+    @Column(name = "table_session_id")
+    private Long tableSessionId;
+
+
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
         name = "post_products",

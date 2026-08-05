@@ -41,6 +41,24 @@ public class AIReviewAgent {
     @Value("${openai.api.key:}")
     private String apiKey;
 
+    @jakarta.annotation.PostConstruct
+    public void initApiKey() {
+        if (apiKey == null || apiKey.trim().isEmpty() || "YOUR_GEMINI_API_KEY".equalsIgnoreCase(apiKey.trim())) {
+            String envKey = System.getenv("GEMINI_API_KEY");
+            if (envKey == null || envKey.trim().isEmpty()) {
+                envKey = System.getenv("OPENAI_API_KEY");
+            }
+            if (envKey == null || envKey.trim().isEmpty()) {
+                envKey = System.getenv("GEMINI_KEY");
+            }
+            if (envKey != null && !envKey.trim().isEmpty()) {
+                this.apiKey = envKey.trim();
+                log.info("Successfully loaded Gemini API key from local environment variable in AIReviewAgent.");
+            }
+        }
+    }
+
+
     @Transactional
     public Map<String, Object> processReviewAndGenerateResolution(CustomerReview review) {
         log.info("AI Review Agent processing review {} from source {} with rating {}", 
@@ -107,7 +125,7 @@ public class AIReviewAgent {
                         .connectTimeout(java.time.Duration.ofSeconds(15))
                         .build();
                 HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + apiKey))
+                        .uri(URI.create("https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=" + apiKey))
                         .timeout(java.time.Duration.ofSeconds(30))
                         .header("Content-Type", "application/json")
                         .POST(HttpRequest.BodyPublishers.ofString(requestBody))

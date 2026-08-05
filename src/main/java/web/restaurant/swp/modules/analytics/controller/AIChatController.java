@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import web.restaurant.swp.modules.analytics.service.AIChatService;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -32,7 +33,8 @@ public class AIChatController {
                     request.getMessage().trim(),
                     request.getLatitude(),
                     request.getLongitude(),
-                    request.getTenantId()
+                    request.getTenantId(),
+                    request.getHistory()
             );
             return ResponseEntity.ok(Map.of("response", responseText));
         } catch (Exception e) {
@@ -46,5 +48,12 @@ public class AIChatController {
         private Double latitude;
         private Double longitude;
         private String tenantId;
+        private List<HistoryMessage> history;
+
+        @Data
+        public static class HistoryMessage {
+            private String role; // "user" hoặc "model"
+            private String text;
+        }
     }
 }

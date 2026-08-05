@@ -10,6 +10,8 @@ import web.restaurant.swp.modules.review.model.*;
 import web.restaurant.swp.modules.review.repository.*;
 import web.restaurant.swp.modules.branch.repository.BranchRepository;
 import web.restaurant.swp.modules.branch.model.Branch;
+import web.restaurant.swp.modules.pos.model.TableSession;
+import web.restaurant.swp.modules.pos.repository.TableSessionRepository;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +27,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 
+import web.restaurant.swp.modules.inventory.model.ProductVariant;
+import web.restaurant.swp.modules.inventory.repository.ProductVariantRepository;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -35,10 +40,14 @@ public class ReviewFeedService {
     private final PostReportRepository postReportRepository;
     private final BlacklistKeywordRepository blacklistKeywordRepository;
     private final ProductRepository productRepository;
+    private final ProductVariantRepository productVariantRepository;
     private final CustomerRepository customerRepository;
     private final LoyaltyTransactionRepository loyaltyTransactionRepository;
     private final S3Service s3Service;
     private final BranchRepository branchRepository;
+    private final TableSessionRepository tableSessionRepository;
+
+
 
     // In-memory rate limiting map (phone -> timestamps list)
     private final java.util.Map<String, List<java.time.LocalDateTime>> postRateLimitMap = new java.util.concurrent.ConcurrentHashMap<>();
@@ -81,10 +90,64 @@ public class ReviewFeedService {
         // Rate limiting: Max 3 posts per 5 minutes
         checkRateLimit(post.getAuthorPhone(), true);
 
+        // Paid bill authorization check: User MUST have paid bill history at RMS
+        UserPaidHistoryDto paidHistory = getUserPaidHistory(post.getAuthorPhone());
+        if (!paidHistory.isHasPaid() || paidHistory.getBranches() == null || paidHistory.getBranches().isEmpty()) {
+            throw new RuntimeException("Bạn chưa có hóa đơn thanh toán hợp lệ tại nhà hàng. Hãy đến trải nghiệm trước khi đăng bài nhé!");
+        }
+
+        // Auto fallback to first paid branch and table if parameters are empty
+        if (post.getBranchId() == null || post.getBranchId().trim().isEmpty()) {
+            post.setBranchId(paidHistory.getBranches().get(0).getBranchId());
+        }
+        if (post.getTableCheckIn() == null || post.getTableCheckIn().trim().isEmpty()) {
+            BranchPaidDto b = paidHistory.getBranches().stream()
+                    .filter(x -> x.getBranchId() != null && x.getBranchId().equalsIgnoreCase(post.getBranchId()))
+                    .findFirst()
+                    .orElse(paidHistory.getBranches().get(0));
+            if (b.getTables() != null && !b.getTables().isEmpty()) {
+                post.setTableCheckIn(b.getTables().get(0).getTableName());
+            } else {
+                post.setTableCheckIn("Bàn ăn RMS");
+            }
+        }
+
+        // Verify if requested branchId exists in user's paid history
+        boolean branchMatch = paidHistory.getBranches().stream()
+                .anyMatch(b -> b.getBranchId() != null && b.getBranchId().equalsIgnoreCase(post.getBranchId()));
+        if (!branchMatch) {
+            throw new RuntimeException("Bạn chưa từng có hóa đơn thanh toán tại chi nhánh này.");
+        }
+
+
+        // Total Posts Quota Check: Total review posts by user MUST NOT exceed total paid sessions count
+        Optional<Customer> customerOpt = customerRepository.findByPhone(post.getAuthorPhone());
+        Long customerId = customerOpt.map(Customer::getId).orElse(null);
+        List<TableSession> paidSessions = tableSessionRepository.findPaidSessionsByPhoneOrCustomerId(post.getAuthorPhone(), customerId);
+        long totalPaidSessionsCount = paidSessions.size();
+        long existingUserPostsCount = postRepository.countByAuthorPhoneAndStatusNot(post.getAuthorPhone(), "HIDDEN");
+
+        if (existingUserPostsCount >= totalPaidSessionsCount) {
+            throw new RuntimeException("Bạn đã dùng hết lượt đăng bài review (" + existingUserPostsCount + "/" + totalPaidSessionsCount + " lượt ăn). Hãy đến nhà hàng thưởng thức thêm để nhận thêm lượt đăng bài nhé!");
+        }
+
+        // Prevent multiple posts for the exact same paid table session
+        if (post.getTableSessionId() != null) {
+            boolean alreadyReviewed = postRepository.existsByTableSessionId(post.getTableSessionId());
+            if (alreadyReviewed) {
+                throw new RuntimeException("Hóa đơn / lượt ăn này đã được tạo bài đánh giá trước đó.");
+            }
+        }
+
+
+
+
+
         // AC1: Content length validation
         if (post.getContent() == null || post.getContent().trim().isEmpty()) {
             throw new RuntimeException("Nội dung bài viết không được trống.");
         }
+
         if (post.getContent().length() > 2000) {
             throw new RuntimeException("Nội dung bài viết vượt quá 2000 ký tự.");
         }
@@ -153,9 +216,9 @@ public class ReviewFeedService {
 
             // First post today gets reward
             if (todayPosts.size() <= 1) {
-                Optional<Customer> customerOpt = customerRepository.findByPhone(savedPost.getAuthorPhone());
-                if (customerOpt.isPresent()) {
-                    Customer customer = customerOpt.get();
+                Optional<Customer> loyaltyCustomerOpt = customerRepository.findByPhone(savedPost.getAuthorPhone());
+                if (loyaltyCustomerOpt.isPresent()) {
+                    Customer customer = loyaltyCustomerOpt.get();
                     customer.setLoyaltyPoints(customer.getLoyaltyPoints() + 50); // Award 50 points
                     customerRepository.save(customer);
 
@@ -169,6 +232,7 @@ public class ReviewFeedService {
                     log.info("[CRM GAMIFICATION] Tặng 50 điểm cho khách hàng {} vì bài đăng chất lượng.", customer.getName());
                 }
             }
+
         }
 
         if ("PUBLIC".equals(savedPost.getStatus())) {
@@ -229,6 +293,12 @@ public class ReviewFeedService {
         Post post = postRepository.findById(postId)
             .orElseThrow(() -> new RuntimeException("Post not found"));
             
+        // Require paid bill history to report posts to prevent competitor mobbing
+        UserPaidHistoryDto paidHistory = getUserPaidHistory(reporterPhone);
+        if (!paidHistory.isHasPaid()) {
+            throw new RuntimeException("Chỉ khách hàng đã từng trải nghiệm dịch vụ tại RMS mới được phép báo cáo bài viết.");
+        }
+
         boolean alreadyReported = postReportRepository.existsByPostIdAndReporterPhone(postId, reporterPhone);
         if (alreadyReported) {
             throw new RuntimeException("Bạn đã báo cáo bài đăng này rồi.");
@@ -243,15 +313,17 @@ public class ReviewFeedService {
         postReportRepository.save(report);
         
         post.setReportCount(post.getReportCount() + 1);
-        if (post.getReportCount() >= 3) {
-            post.setStatus("PENDING_MODERATION"); // Automatically hide
+        // Only auto-hide if report count >= 5 to prevent mobbing auto-deletion
+        if (post.getReportCount() >= 5) {
+            post.setStatus("PENDING_MODERATION"); // Automatically hide for admin review
         }
         Post savedPost = postRepository.save(post);
-        if (savedPost.getReportCount() >= 3) {
+        if (savedPost.getReportCount() >= 5) {
             FeedWebSocketHandler.broadcast("POST_REMOVED:" + postId);
         }
         return savedPost;
     }
+
 
     @Transactional
     public BlacklistKeyword addBlacklistKeyword(String word) {
@@ -321,15 +393,27 @@ public class ReviewFeedService {
     
     @Transactional
     public void softDeletePost(Long postId, String phone) {
+        softDeletePost(postId, phone, false);
+    }
+
+    @Transactional
+    public void softDeletePost(Long postId, String phone, boolean isAdmin) {
         Post post = postRepository.findById(postId)
             .orElseThrow(() -> new RuntimeException("Post not found"));
-        if (post.getAuthorPhone() == null || !post.getAuthorPhone().equals(phone)) {
-            throw new RuntimeException("Bạn không có quyền xóa bài đăng này.");
+        if (!isAdmin) {
+            if (post.getAuthorPhone() == null || !post.getAuthorPhone().equals(phone)) {
+                throw new RuntimeException("Bạn không có quyền xóa bài đăng này.");
+            }
+            if (post.getRestaurantReply() != null && !post.getRestaurantReply().trim().isEmpty()) {
+                throw new RuntimeException("Bài viết này đã được nhà hàng phản hồi chính thức, không thể xóa.");
+            }
         }
         post.setStatus("HIDDEN");
         postRepository.save(post);
         FeedWebSocketHandler.broadcast("POST_REMOVED:" + postId);
     }
+
+
 
     @Transactional
     public void deletePost(Long postId) {
@@ -362,6 +446,11 @@ public class ReviewFeedService {
         if (post.getAuthorPhone() == null || !post.getAuthorPhone().equals(phone)) {
             throw new RuntimeException("Bạn không có quyền chỉnh sửa bài đăng này.");
         }
+
+        if (post.getRestaurantReply() != null && !post.getRestaurantReply().trim().isEmpty()) {
+            throw new RuntimeException("Bài viết này đã được nhà hàng phản hồi chính thức, không thể sửa.");
+        }
+
 
         if (content == null || content.trim().isEmpty()) {
             throw new RuntimeException("Nội dung bài viết không được trống.");
@@ -475,4 +564,92 @@ public class ReviewFeedService {
         FeedWebSocketHandler.broadcast("NEW_POST"); // Broadcast to update feed
         return saved;
     }
+
+    @lombok.Data
+    @lombok.AllArgsConstructor
+    @lombok.NoArgsConstructor
+    @lombok.Builder
+    public static class UserPaidHistoryDto {
+        private boolean hasPaid;
+        private List<BranchPaidDto> branches;
+    }
+
+    @lombok.Data
+    @lombok.AllArgsConstructor
+    @lombok.NoArgsConstructor
+    @lombok.Builder
+    public static class BranchPaidDto {
+        private String branchId;
+        private String branchName;
+        private List<TablePaidDto> tables;
+    }
+
+    @lombok.Data
+    @lombok.AllArgsConstructor
+    @lombok.NoArgsConstructor
+    @lombok.Builder
+    public static class TablePaidDto {
+        private Long tableId;
+        private String tableName;
+    }
+
+    public UserPaidHistoryDto getUserPaidHistory(String phone) {
+        if (phone == null || phone.trim().isEmpty()) {
+            return UserPaidHistoryDto.builder().hasPaid(false).branches(java.util.Collections.emptyList()).build();
+        }
+
+        Optional<Customer> customerOpt = customerRepository.findByPhone(phone);
+        Long customerId = customerOpt.map(Customer::getId).orElse(null);
+
+        List<TableSession> paidSessions = tableSessionRepository.findPaidSessionsByPhoneOrCustomerId(phone, customerId);
+
+        if (paidSessions.isEmpty()) {
+            return UserPaidHistoryDto.builder().hasPaid(false).branches(java.util.Collections.emptyList()).build();
+        }
+
+        java.util.Map<Branch, java.util.Set<web.restaurant.swp.modules.pos.model.TableEntity>> branchTablesMap = new java.util.LinkedHashMap<>();
+        for (TableSession session : paidSessions) {
+            if (session.getTable() != null && session.getTable().getRoom() != null && session.getTable().getRoom().getBranch() != null) {
+                Branch branch = session.getTable().getRoom().getBranch();
+                branchTablesMap.computeIfAbsent(branch, k -> new java.util.LinkedHashSet<>()).add(session.getTable());
+            }
+        }
+
+        List<BranchPaidDto> branchDtos = new java.util.ArrayList<>();
+        for (java.util.Map.Entry<Branch, java.util.Set<web.restaurant.swp.modules.pos.model.TableEntity>> entry : branchTablesMap.entrySet()) {
+            Branch branch = entry.getKey();
+            List<TablePaidDto> tableDtos = new java.util.ArrayList<>();
+            for (web.restaurant.swp.modules.pos.model.TableEntity table : entry.getValue()) {
+                String label = table.getName();
+                if (table.getRoom() != null && table.getRoom().getName() != null) {
+                    label = table.getName() + " - " + table.getRoom().getName();
+                }
+                tableDtos.add(TablePaidDto.builder().tableId(table.getId()).tableName(label).build());
+            }
+            branchDtos.add(BranchPaidDto.builder()
+                    .branchId(branch.getBranchId())
+                    .branchName(branch.getName())
+                    .tables(tableDtos)
+                    .build());
+        }
+
+        return UserPaidHistoryDto.builder()
+                .hasPaid(!branchDtos.isEmpty())
+                .branches(branchDtos)
+                .build();
+    }
+
+    public List<Product> getUserPaidDishes(String phone) {
+        if (phone == null || phone.trim().isEmpty()) {
+            return java.util.Collections.emptyList();
+        }
+
+        Optional<Customer> customerOpt = customerRepository.findByPhone(phone);
+        Long customerId = customerOpt.map(Customer::getId).orElse(null);
+
+        return productRepository.findPaidProductsByPhoneOrCustomerId(phone, customerId);
+    }
+
 }
+
+

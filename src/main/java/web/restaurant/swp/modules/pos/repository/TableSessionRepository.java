@@ -40,6 +40,10 @@ public interface TableSessionRepository extends JpaRepository<TableSession, Long
     List<TableSession> findByTableRoomBranchBranchIdAndStatus(String branchId, String status);
     boolean existsByTableId(Long tableId);
     Optional<TableSession> findByOrderCode(Long orderCode);
+
+    @Query("SELECT DISTINCT ts FROM TableSession ts LEFT JOIN ts.customer c WHERE ts.paymentStatus = 'PAID' AND ((c IS NOT NULL AND c.phone = :phone) OR (c IS NOT NULL AND :customerId IS NOT NULL AND c.id = :customerId))")
+    List<TableSession> findPaidSessionsByPhoneOrCustomerId(@org.springframework.data.repository.query.Param("phone") String phone, @org.springframework.data.repository.query.Param("customerId") Long customerId);
+
 }
 
 // --- MENU & PRODUCTS ---

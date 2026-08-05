@@ -472,7 +472,12 @@ public class PosController {
     }
 
     @PostMapping("/api/pos/checkout/confirm")
-    public ResponseEntity<?> finalizePayment(@RequestParam Long sessionId, @RequestParam double amount, @RequestParam(required = false, defaultValue = "CASH") String paymentMethod) {
+    public ResponseEntity<?> finalizePayment(
+            @RequestParam Long sessionId, 
+            @RequestParam double amount, 
+            @RequestParam(required = false, defaultValue = "CASH") String paymentMethod,
+            @RequestParam(required = false) String customerPhone,
+            @RequestParam(required = false) String phone) {
         try {
             TableSession session = tableSessionRepository.findById(sessionId).orElse(null);
             if (session != null) {
@@ -482,11 +487,12 @@ public class PosController {
                 if (error.hasError()) return error.toResponse();
             }
 
-            orderService.confirmPayment(sessionId, amount, paymentMethod);
+            String targetPhone = (customerPhone != null && !customerPhone.trim().isEmpty()) ? customerPhone : phone;
+            orderService.confirmPayment(sessionId, amount, paymentMethod, targetPhone);
             User user = getLoggedInUser();
             String branchId = (session != null) ? session.getTable().getRoom().getBranch().getBranchId() : getActiveBranchId();
             authService.logAudit(user, "BILL_PAYMENT", "Order", sessionId.toString(),
-                "Thanh to?n th?nh c?ng h?a ??n b?n " + (session != null ? session.getTable().getName() : sessionId) + ", s? ti?n: ?" + String.format("%,.0f", amount) + " (" + paymentMethod + ")",
+                "Thanh toán thành công hóa đơn bàn " + (session != null ? session.getTable().getName() : sessionId) + ", số tiền: " + String.format("%,.0f", amount) + " (" + paymentMethod + ")" + (targetPhone != null ? " - SĐT KH: " + targetPhone : ""),
                 "127.0.0.1", branchId);
             KdsWebSocketHandler.broadcast("ORDER_STATE_CHANGED");
             return ResponseEntity.ok().build();
@@ -494,6 +500,7 @@ public class PosController {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
+
 
     @GetMapping("/api/pos/order-logs/summary")
     public ResponseEntity<?> getOrderLogsSummary(@RequestParam(required = false, defaultValue = "day") String range) {

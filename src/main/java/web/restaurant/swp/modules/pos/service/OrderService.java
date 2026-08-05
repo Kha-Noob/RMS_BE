@@ -44,6 +44,8 @@ public class OrderService {
     private final ProductVariantRepository productVariantRepository;
     private final InventoryService inventoryService;
     private final LoyaltyService loyaltyService;
+    private final CustomerRepository customerRepository;
+
 
     // REQ-POS-01: List tables by branch
     public List<TableEntity> getTablesByBranch(String branchId) {
@@ -276,13 +278,34 @@ public class OrderService {
 
     @Transactional
     public void confirmPayment(Long sessionId, double amountPaid) {
-        confirmPayment(sessionId, amountPaid, "CASH");
+        confirmPayment(sessionId, amountPaid, "CASH", null);
     }
 
     @Transactional
     public void confirmPayment(Long sessionId, double amountPaid, String paymentMethod) {
+        confirmPayment(sessionId, amountPaid, paymentMethod, null);
+    }
+
+    @Transactional
+    public void confirmPayment(Long sessionId, double amountPaid, String paymentMethod, String customerPhone) {
         TableSession session = tableSessionRepository.findById(sessionId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy phiên bàn cần thanh toán."));
+
+        if (customerPhone != null && !customerPhone.trim().isEmpty()) {
+            String phoneStr = customerPhone.trim();
+            Customer customer = customerRepository.findByPhone(phoneStr)
+                    .orElseGet(() -> {
+                        Customer newCustomer = Customer.builder()
+                                .phone(phoneStr)
+                                .name("Khách hàng " + phoneStr)
+                                .membershipTier("Bronze")
+                                .loyaltyPoints(0)
+                                .totalSpent(0.0)
+                                .build();
+                        return customerRepository.save(newCustomer);
+                    });
+            session.setCustomer(customer);
+        }
         
         session.setPaymentStatus("PAID");
         session.setStatus("COMPLETED");
@@ -310,6 +333,10 @@ public class OrderService {
             loyaltyService.accumulatePoints(session.getCustomer().getId(), amountPaid);
         }
         
-        log.info("Thanh toán thành công ({}) cho Session {}, Bàn {}, Tổng tiền: {}", paymentMethod, sessionId, table.getName(), amountPaid);
+        log.info("Thanh toán thành công ({}) cho Session {}, Bàn {}, Khách hàng: {}, Tổng tiền: {}", 
+            paymentMethod, sessionId, table.getName(), 
+            (session.getCustomer() != null ? session.getCustomer().getPhone() : "Vãng lai"), 
+            amountPaid);
     }
+
 }
