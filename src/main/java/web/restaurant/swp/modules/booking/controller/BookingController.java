@@ -46,8 +46,21 @@ public class BookingController {
      */
     @GetMapping("/api/public/branches")
     public ResponseEntity<?> getPublicBranches(@RequestParam(required = false) String tenantId) {
-        String targetTenantId = (tenantId != null && !tenantId.trim().isEmpty()) ? tenantId.trim() : "tenant-1";
-        List<Branch> branches = branchRepository.findByTenantTenantIdAndIsActiveTrue(targetTenantId);
+        List<Branch> branches;
+        if (tenantId != null && !tenantId.trim().isEmpty() && !"ALL".equalsIgnoreCase(tenantId.trim())) {
+            branches = branchRepository.findByTenantTenantIdAndIsActiveTrue(tenantId.trim());
+            if (branches.isEmpty()) {
+                Optional<Branch> bOpt = branchRepository.findById(tenantId.trim());
+                if (bOpt.isPresent() && bOpt.get().isActive()) {
+                    branches = List.of(bOpt.get());
+                } else {
+                    branches = branchRepository.findAllByIsActiveTrue();
+                }
+            }
+        } else {
+            branches = branchRepository.findAllByIsActiveTrue();
+        }
+
         List<Map<String, Object>> result = new ArrayList<>();
         for (Branch b : branches) {
             Map<String, Object> map = new LinkedHashMap<>();
@@ -55,6 +68,7 @@ public class BookingController {
             map.put("name", b.getName());
             map.put("address", b.getAddress());
             map.put("phone", b.getPhone());
+            map.put("tenantId", b.getTenant() != null ? b.getTenant().getTenantId() : "");
 
             // Resolve bank settings (try Branch BankSetting first, fallback to Tenant Bank details)
             Optional<BankSetting> settingOpt = bankSettingRepository.findByBranchBranchId(b.getBranchId());
